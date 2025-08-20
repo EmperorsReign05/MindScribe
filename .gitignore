@@ -1,0 +1,15 @@
+# Dependencies
+/node_modules
+
+# Vite build output
+/dist
+
+# Supabase
+/supabase/.temp
+/supabase/db/volumes
+
+# Deno
+/deno.lock
+
+# IDE config
+.vscode/
