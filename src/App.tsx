@@ -176,14 +176,14 @@ export default function App() {
 
     try {
       // Call our new backend endpoint for RAG chat
-      const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16d07a57/chat`, {
+      const response = await fetch(`http://127.0.0.1:8000/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           // Pass the auth token if the user is signed in
           ...(accessToken && { 'Authorization': `Bearer ${accessToken}` })
         },
-        body: JSON.stringify({ messages: updatedMessages })
+        body: JSON.stringify({ message: text })
       });
 
       if (!response.ok) {

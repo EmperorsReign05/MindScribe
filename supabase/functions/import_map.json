@@ -1,8 +1,0 @@
-{
-  "imports": {
-    "npm:@langchain/community/": "npm:/@langchain/community/",
-    "npm:@langchain/core/": "npm:/@langchain/core/",
-    "npm:@supabase/supabase-js": "npm:/@supabase/supabase-js@2",
-    "npm:hono": "npm:/hono@4"
-  }
-}
