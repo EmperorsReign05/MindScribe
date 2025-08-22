@@ -4,29 +4,50 @@
 
 @layer base {
   :root {
-    --background: #F8F9FA;
-    --foreground: #212529;
-    --card: #ffffff;
+    --background: #F8F9FA; /* Off-white */
+    --foreground: #212529; /* Dark Gray */
+    --card: #ffffff; /* White */
     --card-foreground: #212529;
     --popover: #ffffff;
     --popover-foreground: #212529;
-    --primary: #4A90E2;
-    --primary-foreground: #ffffff;
-    --secondary: #EBF5FF;
+    --primary: #4A90E2; /* Calming Blue */
+    --primary-foreground: #ffffff; /* White text on blue */
+    --secondary: #EBF5FF; /* Light Blue */
     --secondary-foreground: #212529;
-    --muted: #6C757D;
+    --muted: #6C757D; /* Muted Gray */
     --muted-foreground: #6C757D;
-    --accent: #EBF5FF;
+    --accent: #EBF5FF; /* Light Blue */
     --accent-foreground: #212529;
     --destructive: #d4183d;
     --destructive-foreground: #ffffff;
     --border: #dee2e6;
     --input: #ced4da;
-    --ring: #4A90E2;
+    --ring: #4A90E2; /* Calming Blue for focus rings */
   }
 
   body {
     background-color: var(--background);
     color: var(--foreground);
+  }
+}
+
+/* Add this for the thinking animation */
+@layer utilities {
+  .animate-pulse-dot {
+    animation: pulse-dot 1.4s infinite ease-in-out both;
+  }
+  .animate-pulse-dot:nth-child(1) {
+    animation-delay: -0.32s;
+  }
+  .animate-pulse-dot:nth-child(2) {
+    animation-delay: -0.16s;
+  }
+  @keyframes pulse-dot {
+    0%, 80%, 100% {
+      transform: scale(0);
+    }
+    40% {
+      transform: scale(1.0);
+    }
   }
 }

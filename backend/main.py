@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from langchain_community.llms import Ollama
 from langchain_community.vectorstores import FAISS
@@ -9,11 +10,10 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.documents import Document
-
-# --- 1. SET UP THE FASTAPI APP ---
+import json
+from .knowledge_base import documents as docs
+# --- (APP and CORS setup remains the same) ---
 app = FastAPI()
-
-# Allow all origins for CORS (important for development)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,69 +22,64 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 2. LOAD YOUR KNOWLEDGE BASE (EXAMPLE) ---
-# In a real app, you would load your CBT/Mindfulness documents here.
-# For this example, we'll use a simple string as our knowledge base.
-knowledge_base_text = """
-Cognitive Behavioral Therapy (CBT) is a type of psychotherapy that helps people to change unhelpful thinking and behavior patterns.
-One key technique is cognitive restructuring, where you identify, challenge, and reframe negative automatic thoughts.
-For example, if a user feels they failed a presentation, a helpful reframe is to focus on what they learned from the experience and what they did well, rather than just the negative aspects.
-Another technique is mindfulness, which involves paying attention to the present moment without judgment. A simple mindfulness exercise is to focus on your breath, noticing the sensation of inhalation and exhalation.
-"""
 
-# Split the text into manageable chunks
-text_splitter = RecursiveCharacterTextSplitter()
-documents = text_splitter.split_text(knowledge_base_text)
 
-# Create Document objects
-docs = [Document(page_content=t) for t in documents]
-
-# --- 3. CREATE THE RAG CHAIN ---
-# Initialize Ollama embeddings and the main LLM
+# --- (RAG CHAIN setup remains the same) ---
 embeddings = OllamaEmbeddings(model="gemma:2b")
 llm = Ollama(model="gemma:2b")
+vector = FAISS.from_documents(docs, embeddings)#/
+# ... (imports and other code remain the same)
 
-# Create a FAISS vector store from the documents
-vector = FAISS.from_documents(docs, embeddings)
-
-# Create the prompt template
+# --- REFINED PROMPT ---
+# This prompt encourages more listening and less direct instruction
 prompt = ChatPromptTemplate.from_template("""
-You are MindScribe, a compassionate AI wellness companion.
-Use the following retrieved context to inform your response in a caring, conversational tone.
-Do not mention the context directly. If it's not relevant, ignore it.
+You are MindScribe, a compassionate and empathetic AI wellness companion. Your primary role is to be a supportive listener.
+- Validate the user's feelings and acknowledge what they are sharing.
+- Do not give unsolicited advice or mention therapeutic techniques like CBT unless the user explicitly asks for help or coping strategies.
+- Keep your responses concise, gentle, and encouraging.
+- Ask open-ended questions to help the user explore their thoughts and feelings.
+- The user has not mentioned a presentation, so do not ask about one.
+
+Use the following retrieved context ONLY if the user asks for specific information or techniques. Otherwise, ignore it.
 
 <context>
 {context}
 </context>
 
-Question: {input}
+User's message: {input}
+Your supportive response:
 """)
 
-# Create the main chain that combines the documents and the prompt
-document_chain = create_stuff_documents_chain(llm, prompt)
 
-# Create the retriever from the vector store
+document_chain = create_stuff_documents_chain(llm, prompt)
 retriever = vector.as_retriever()
 
-# --- 4. DEFINE THE API ENDPOINT ---
+
+# --- API ENDPOINT ---
 class ChatRequest(BaseModel):
     message: str
 
+async def stream_generator(request: ChatRequest):
+    # 1. Retrieve documents first
+    retrieved_docs = retriever.invoke(request.message)
+
+    # 2. Stream the LLM response
+    stream = document_chain.stream({
+        "input": request.message,
+        "context": retrieved_docs
+    })
+
+    # Yield the chunks of the response as they come in
+    for chunk in stream:
+        yield chunk
+
+    # 3. After the stream is done, yield the sources
+    # We use a special separator to distinguish sources from the main content
+    separator = "\n\n---SOURCES---\n\n"
+    sources = [doc.metadata for doc in retrieved_docs]
+    yield separator + json.dumps(sources)
+
+
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
-    try:
-        # Create a simple chain to pass the input to the retriever
-        retrieval_chain = retriever | document_chain
-        
-        # Invoke the chain with the user's message
-        response = await retrieval_chain.ainvoke({"input": request.message})
-        
-        return {"reply": response}
-    except Exception as e:
-        print(f"Error in chat endpoint: {e}")
-        return {"error": "Internal server error"}
-
-# --- 5. DEFINE A ROOT ENDPOINT FOR HEALTH CHECKS ---
-@app.get("/")
-def read_root():
-    return {"Hello": "MindScribe Backend"}
+    return StreamingResponse(stream_generator(request), media_type="text/event-stream")

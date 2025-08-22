@@ -13,6 +13,7 @@ interface Message {
   text: string;
   isUser: boolean;
   timestamp: string;
+  sources?: Array<{ source: string }>;
 }
 
 interface User {
@@ -160,65 +161,95 @@ export default function App() {
     }
   };
 
-  // --- HIGHLIGHT: RAG Integration ---
-  // This is the new, updated function to handle sending messages.
-  const handleSendMessage = async (text: string) => {
-    const newUserMessage: Message = {
-      id: Date.now().toString(),
-      text,
-      isUser: true,
-      timestamp: formatTimestamp()
-    };
+  // Inside src/App.tsx
 
-    const updatedMessages = [...messages, newUserMessage];
-    setMessages(updatedMessages);
-    setIsTyping(true);
-
-    try {
-      // Call our new backend endpoint for RAG chat
-      const response = await fetch(`http://127.0.0.1:8000/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // Pass the auth token if the user is signed in
-          ...(accessToken && { 'Authorization': `Bearer ${accessToken}` })
-        },
-        body: JSON.stringify({ message: text })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to get AI response.');
-      }
-
-      const { reply } = await response.json();
-
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: reply,
-        isUser: false,
-        timestamp: formatTimestamp()
-      };
-      
-      const finalMessages = [...updatedMessages, aiMessage];
-      setMessages(finalMessages);
-
-      if (user) {
-        saveConversation(finalMessages);
-      }
-
-    } catch (error) {
-      console.error("Chat error:", error);
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: "Sorry, I'm having trouble connecting right now. Please try again later.",
-        isUser: false,
-        timestamp: formatTimestamp()
-      };
-      setMessages([...updatedMessages, errorMessage]);
-    } finally {
-      setIsTyping(false);
-    }
+const handleSendMessage = async (text: string) => {
+  const newUserMessage: Message = {
+    id: Date.now().toString(),
+    text,
+    isUser: true,
+    timestamp: formatTimestamp(),
   };
+
+  // Add user's message and placeholder for the AI's response
+  setMessages(prevMessages => [
+    ...prevMessages,
+    newUserMessage,
+    {
+      id: (Date.now() + 1).toString(),
+      text: "", // Start with an empty text
+      isUser: false,
+      timestamp: formatTimestamp(),
+      sources: [],
+    },
+  ]);
+  setIsTyping(false); // We are no longer "typing", we are streaming
+
+  try {
+    const response = await fetch(`http://127.0.0.1:8000/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    });
+
+    if (!response.body) {
+      throw new Error("Response body is null");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let done = false;
+    let fullResponse = "";
+
+    while (!done) {
+      const { value, done: readerDone } = await reader.read();
+      done = readerDone;
+      const chunk = decoder.decode(value, { stream: true });
+      fullResponse += chunk;
+
+      // Check if we've reached the sources separator
+      const sourceSeparator = "\n\n---SOURCES---\n\n";
+      if (fullResponse.includes(sourceSeparator)) {
+        const parts = fullResponse.split(sourceSeparator);
+        const content = parts[0];
+        const sourcesJson = parts[1];
+
+        if (sourcesJson) {
+          try {
+            const sources = JSON.parse(sourcesJson);
+            setMessages(prev =>
+              prev.map((msg, index) =>
+                index === prev.length - 1 ? { ...msg, text: content.trim(), sources: sources } : msg
+              )
+            );
+          } catch (e) {
+            // If parsing fails, just update the text
+            setMessages(prev =>
+              prev.map((msg, index) =>
+                index === prev.length - 1 ? { ...msg, text: content.trim() } : msg
+              )
+            );
+          }
+        }
+        break; // Stop processing after finding sources
+      }
+
+      // Update the last message's text with the new chunk
+      setMessages(prev =>
+        prev.map((msg, index) =>
+          index === prev.length - 1 ? { ...msg, text: fullResponse } : msg
+        )
+      );
+    }
+  } catch (error) {
+    console.error("Chat error:", error);
+    setMessages(prev =>
+      prev.map((msg, index) =>
+        index === prev.length - 1 ? { ...msg, text: "Sorry, I'm having trouble connecting right now. Please try again later." } : msg
+      )
+    );
+  }
+};
 
 
 
@@ -235,7 +266,7 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col ">
       <header className="bg-card border-b border-border px-6 py-4 flex items-center justify-between">
         {/* Header content remains the same */}
         <div className="flex items-center gap-3">
