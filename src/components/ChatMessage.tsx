@@ -1,5 +1,4 @@
-import { Avatar, AvatarFallback } from "./ui/avatar";
-import { Badge } from "./ui/badge";
+import { User, Bot } from 'lucide-react';
 
 interface ChatMessageProps {
   message: string;
@@ -9,59 +8,54 @@ interface ChatMessageProps {
 }
 
 export function ChatMessage({ message, isUser, timestamp, sources }: ChatMessageProps) {
-  // Render a thinking animation if the message is from the AI and is empty
-  if (!isUser && !message) {
-    return (
-      <div className="flex gap-3 mb-6 flex-row">
-        <Avatar className="w-8 h-8 mt-1 flex-shrink-0">
-          <AvatarFallback className="text-sm bg-secondary text-secondary-foreground">
-            AI
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex flex-col max-w-[80%] items-start">
-          <div className="bg-secondary text-secondary-foreground px-4 py-3 rounded-2xl rounded-bl-sm">
-            <div className="flex gap-1.5 items-center">
-              <span className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse-dot"></span>
-              <span className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse-dot"></span>
-              <span className="w-2 h-2 rounded-full bg-muted-foreground animate-pulse-dot"></span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className={`flex gap-3 mb-6 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-      <Avatar className="w-8 h-8 mt-1 flex-shrink-0">
-        <AvatarFallback className={`text-sm ${isUser ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}>
-          {isUser ? 'You' : 'AI'}
-        </AvatarFallback>
-      </Avatar>
+    <div className={`flex gap-3 mb-6 ${isUser ? 'justify-end' : 'justify-start'}`}>
+      {!isUser && (
+        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0 mt-1 shadow-lg">
+          <Bot className="w-4 h-4 text-white" />
+        </div>
+      )}
       
-      <div className={`flex flex-col max-w-[80%] ${isUser ? 'items-end' : 'items-start'}`}>
-        <div 
-          className={`px-4 py-3 rounded-2xl ${
-            isUser 
-              ? 'bg-card text-card-foreground border border-border rounded-br-sm' 
-              : 'bg-secondary text-secondary-foreground rounded-bl-sm'
+      <div className={`flex flex-col max-w-[70%] ${isUser ? 'items-end' : 'items-start'}`}>
+        <div
+          className={`px-4 py-3 rounded-2xl shadow-lg border ${
+            isUser
+              ? 'bg-blue-500 text-white rounded-br-sm border-blue-600'
+              : 'bg-white text-slate-800 rounded-bl-sm border-slate-200'
           }`}
         >
-          <p className="whitespace-pre-wrap">{message}</p>
+          <div className="text-sm leading-relaxed whitespace-pre-wrap">
+            {message}
+          </div>
         </div>
-        <div className="flex items-center gap-2 mt-1 px-1">
-          <span className="text-muted-foreground text-sm">
-            {timestamp}
-          </span>
-          {sources && sources.length > 0 && (
-            <div className="flex gap-1 flex-wrap">
-              {sources.map((s, index) => (
-                <Badge key={index} variant="outline">{s.source}</Badge>
-              ))}
-            </div>
-          )}
+        
+        <div className={`text-xs text-slate-500 mt-1 px-1 ${isUser ? 'text-right' : 'text-left'}`}>
+          {timestamp}
         </div>
+        
+        {sources && sources.length > 0 && !isUser && (
+          <div className="mt-2 text-xs">
+            <details className="cursor-pointer">
+              <summary className="text-slate-500 hover:text-slate-700">
+                Sources ({sources.length})
+              </summary>
+              <div className="mt-1 space-y-1">
+                {sources.map((source, index) => (
+                  <div key={index} className="text-slate-600 truncate">
+                    {source.source}
+                  </div>
+                ))}
+              </div>
+            </details>
+          </div>
+        )}
       </div>
+      
+      {isUser && (
+        <div className="w-8 h-8 bg-gradient-to-br from-slate-600 to-slate-700 rounded-full flex items-center justify-center flex-shrink-0 mt-1 shadow-lg">
+          <User className="w-4 h-4 text-white" />
+        </div>
+      )}
     </div>
   );
 }

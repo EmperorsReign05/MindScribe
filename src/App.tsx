@@ -4,7 +4,7 @@ import { ChatInput } from "./components/ChatInput.tsx";
 import { AuthModal } from "./components/AuthModal.tsx";
 import { Button } from "./components/ui/button.tsx";
 import { ScrollArea } from "./components/ui/scroll-area.tsx";
-import { Heart, LogOut, Save, FileText } from "lucide-react";
+import { Heart, LogOut, Save, FileText, Settings } from "lucide-react";
 import { supabase } from './utils/supabase/client.tsx';
 import { projectId } from './utils/supabase/info.tsx';
 
@@ -79,7 +79,6 @@ export default function App() {
 
   const loadConversations = async (token: string) => {
     try {
-      // Your existing load conversation logic is good.
       const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16d07a57/conversations`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -114,7 +113,6 @@ export default function App() {
   };
 
   const handleSignOut = async () => {
-    // Your existing sign out logic is good.
     await supabase.auth.signOut();
     setUser(null);
     setAccessToken(null);
@@ -161,97 +159,92 @@ export default function App() {
     }
   };
 
-  // Inside src/App.tsx
-
-const handleSendMessage = async (text: string) => {
-  const newUserMessage: Message = {
-    id: Date.now().toString(),
-    text,
-    isUser: true,
-    timestamp: formatTimestamp(),
-  };
-
-  // Add user's message and placeholder for the AI's response
-  setMessages(prevMessages => [
-    ...prevMessages,
-    newUserMessage,
-    {
-      id: (Date.now() + 1).toString(),
-      text: "", // Start with an empty text
-      isUser: false,
+  const handleSendMessage = async (text: string) => {
+    const newUserMessage: Message = {
+      id: Date.now().toString(),
+      text,
+      isUser: true,
       timestamp: formatTimestamp(),
-      sources: [],
-    },
-  ]);
-  setIsTyping(false); // We are no longer "typing", we are streaming
+    };
 
-  try {
-    const response = await fetch(`http://127.0.0.1:8000/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text }),
-    });
+    // Add user's message and placeholder for the AI's response
+    setMessages(prevMessages => [
+      ...prevMessages,
+      newUserMessage,
+      {
+        id: (Date.now() + 1).toString(),
+        text: "",
+        isUser: false,
+        timestamp: formatTimestamp(),
+        sources: [],
+      },
+    ]);
+    setIsTyping(false);
 
-    if (!response.body) {
-      throw new Error("Response body is null");
-    }
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let done = false;
-    let fullResponse = "";
-
-    while (!done) {
-      const { value, done: readerDone } = await reader.read();
-      done = readerDone;
-      const chunk = decoder.decode(value, { stream: true });
-      fullResponse += chunk;
-
-      // Check if we've reached the sources separator
-      const sourceSeparator = "\n\n---SOURCES---\n\n";
-      if (fullResponse.includes(sourceSeparator)) {
-        const parts = fullResponse.split(sourceSeparator);
-        const content = parts[0];
-        const sourcesJson = parts[1];
-
-        if (sourcesJson) {
-          try {
-            const sources = JSON.parse(sourcesJson);
-            setMessages(prev =>
-              prev.map((msg, index) =>
-                index === prev.length - 1 ? { ...msg, text: content.trim(), sources: sources } : msg
-              )
-            );
-          } catch (e) {
-            // If parsing fails, just update the text
-            setMessages(prev =>
-              prev.map((msg, index) =>
-                index === prev.length - 1 ? { ...msg, text: content.trim() } : msg
-              )
-            );
-          }
-        }
-        break; // Stop processing after finding sources
+      if (!response.body) {
+        throw new Error("Response body is null");
       }
 
-      // Update the last message's text with the new chunk
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+      let fullResponse = "";
+
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        const chunk = decoder.decode(value, { stream: true });
+        fullResponse += chunk;
+
+        // Check if we've reached the sources separator
+        const sourceSeparator = "\n\n---SOURCES---\n\n";
+        if (fullResponse.includes(sourceSeparator)) {
+          const parts = fullResponse.split(sourceSeparator);
+          const content = parts[0];
+          const sourcesJson = parts[1];
+
+          if (sourcesJson) {
+            try {
+              const sources = JSON.parse(sourcesJson);
+              setMessages(prev =>
+                prev.map((msg, index) =>
+                  index === prev.length - 1 ? { ...msg, text: content.trim(), sources: sources } : msg
+                )
+              );
+            } catch (e) {
+              setMessages(prev =>
+                prev.map((msg, index) =>
+                  index === prev.length - 1 ? { ...msg, text: content.trim() } : msg
+                )
+              );
+            }
+          }
+          break;
+        }
+
+        // Update the last message's text with the new chunk
+        setMessages(prev =>
+          prev.map((msg, index) =>
+            index === prev.length - 1 ? { ...msg, text: fullResponse } : msg
+          )
+        );
+      }
+    } catch (error) {
+      console.error("Chat error:", error);
       setMessages(prev =>
         prev.map((msg, index) =>
-          index === prev.length - 1 ? { ...msg, text: fullResponse } : msg
+          index === prev.length - 1 ? { ...msg, text: "Sorry, I'm having trouble connecting right now. Please try again later." } : msg
         )
       );
     }
-  } catch (error) {
-    console.error("Chat error:", error);
-    setMessages(prev =>
-      prev.map((msg, index) =>
-        index === prev.length - 1 ? { ...msg, text: "Sorry, I'm having trouble connecting right now. Please try again later." } : msg
-      )
-    );
-  }
-};
-
-
+  };
 
   const startNewConversation = () => {
     setCurrentConversationId(null);
@@ -266,48 +259,82 @@ const handleSendMessage = async (text: string) => {
   };
 
   return (
-    <div className="h-screen flex flex-col ">
-      <header className="bg-card border-b border-border px-6 py-4 flex items-center justify-between">
-        {/* Header content remains the same */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
-            <Heart className="w-5 h-5 text-primary-foreground" />
+    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 to-blue-50">
+      {/* Header */}
+      <header className="bg-white/80 backdrop-blur-lg border-b border-slate-200/60 px-4 sm:px-6 py-4 shadow-sm">
+        <div className="flex items-center justify-between max-w-6xl mx-auto">
+          {/* Logo and Title */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+              <Heart className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-slate-800">MindScribe</h1>
+              <p className="text-slate-600 text-sm">
+                {user ? `Welcome back, ${user.user_metadata?.name || 'Friend'}` : 'Your AI wellness companion'}
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold">MindScribe</h1>
-            <p className="text-muted-foreground text-sm">
-              {user ? `Welcome back, ${user.user_metadata?.name || 'Friend'}` : 'Your AI wellness companion'}
-            </p>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          {user ? (
-            <>
-              <Button variant="outline" size="sm" onClick={startNewConversation} className="hidden sm:flex">
-                <FileText className="w-4 h-4 mr-2" />New Chat
+          
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
+            {user ? (
+              <>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={startNewConversation} 
+                  className="hidden sm:flex text-slate-600 hover:text-slate-800 hover:bg-slate-100"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  New Chat
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => saveConversation(messages)} 
+                  disabled={isSaving || messages.length === 0}
+                  className="text-slate-600 hover:text-slate-800 hover:bg-slate-100"
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  {isSaving ? 'Saving...' : 'Save'}
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={handleSignOut}
+                  className="text-slate-600 hover:text-slate-800 hover:bg-slate-100"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </Button>
+              </>
+            ) : (
+              <Button 
+                variant="default" 
+                size="sm" 
+                onClick={() => setShowAuthModal(true)}
+                className="bg-blue-500 hover:bg-blue-600 text-white shadow-lg"
+              >
+                Sign In
               </Button>
-              <Button variant="outline" size="sm" onClick={() => saveConversation(messages)} disabled={isSaving || messages.length === 0}>
-                <Save className="w-4 h-4 mr-2" />{isSaving ? 'Saving...' : 'Save'}
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleSignOut}>
-                <LogOut className="w-4 h-4 mr-2" />Sign Out
-              </Button>
-            </>
-          ) : (
-            <Button variant="outline" size="sm" onClick={() => setShowAuthModal(true)}>
-              Sign In
+            )}
+            
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="p-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100"
+            >
+              <Settings className="w-4 h-4" />
             </Button>
-          )}
-          
-          
+          </div>
         </div>
       </header>
 
-      {/* Pass the ref to ScrollArea */}
+      {/* Chat Area */}
       <div className="flex-1 flex flex-col min-h-0">
-        <ScrollArea className="flex-1 px-6" ref={scrollAreaRef}>
-          <div className="py-6">
+        <ScrollArea className="flex-1 px-4 sm:px-6" ref={scrollAreaRef}>
+          <div className="py-6 max-w-4xl mx-auto">
             {messages.map((message) => (
               <ChatMessage
                 key={message.id}
@@ -319,12 +346,14 @@ const handleSendMessage = async (text: string) => {
             
             {isTyping && (
               <div className="flex gap-3 mb-6">
-                <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center flex-shrink-0 mt-1"><span className="text-secondary-foreground text-sm">AI</span></div>
-                <div className="bg-secondary text-secondary-foreground px-4 py-3 rounded-2xl rounded-bl-sm">
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0 mt-1 shadow-lg">
+                  <span className="text-white text-xs font-medium">AI</span>
+                </div>
+                <div className="bg-white rounded-2xl rounded-bl-sm px-4 py-3 shadow-lg border border-slate-200">
                   <div className="flex gap-1">
-                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
+                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                   </div>
                 </div>
               </div>
@@ -332,7 +361,12 @@ const handleSendMessage = async (text: string) => {
           </div>
         </ScrollArea>
 
-        <ChatInput onSendMessage={handleSendMessage} disabled={isTyping} />
+        {/* Chat Input */}
+        <div className="border-t border-slate-200/60 bg-white/80 backdrop-blur-lg px-4 sm:px-6 py-4">
+          <div className="max-w-4xl mx-auto">
+            <ChatInput onSendMessage={handleSendMessage} disabled={isTyping} />
+          </div>
+        </div>
       </div>
 
       <AuthModal
