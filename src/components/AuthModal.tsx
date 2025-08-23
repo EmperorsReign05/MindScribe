@@ -31,42 +31,37 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
     publicAnonKey
   );
 
-  const handleSignUp = async (e: React.FormEvent) => {
+   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
 
     try {
-      // First create user via our server
-      const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16d07a57/signup`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${publicAnonKey}`
-        },
-        body: JSON.stringify(signUpData)
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Sign up failed');
-      }
-
-      // Now sign in the user
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      // standard Supabase signUp method
+      const { data, error } = await supabase.auth.signUp({
         email: signUpData.email,
-        password: signUpData.password
+        password: signUpData.password,
+        options: {
+          // Attach the user's name to their metadata
+          data: {
+            name: signUpData.name,
+          },
+        },
       });
 
-      if (signInError) {
-        throw new Error(signInError.message);
+      if (error) {
+        throw new Error(error.message);
       }
 
-      if (data.session?.access_token) {
+      // Check if a user and session were returned
+      if (data.user && data.session) {
         onAuthSuccess(data.session.access_token, data.user);
         onClose();
+      } else {
+          // This can happen if you have email confirmation enabled
+          setError("Please check your email to confirm your sign-up.");
       }
+
     } catch (err: any) {
       console.error('Sign up error:', err);
       setError(err.message || 'An error occurred during sign up');
@@ -74,6 +69,7 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess }: AuthModalProps) {
       setIsLoading(false);
     }
   };
+
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
