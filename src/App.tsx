@@ -49,14 +49,98 @@ export default function App() {
 
   // Function to generate conversation title from first message
   const generateConversationTitle = (messages: Message[]) => {
-    const firstUserMessage = messages.find(msg => msg.isUser);
-    if (firstUserMessage) {
-      return firstUserMessage.text.length > 30 
-        ? firstUserMessage.text.substring(0, 30) + "..." 
-        : firstUserMessage.text;
+  const firstUserMessage = messages.find(msg => msg.isUser);
+  if (!firstUserMessage) return "New Conversation";
+  
+  let text = firstUserMessage.text.trim();
+  
+  // Remove common greetings and get to the actual content
+  text = text.replace(/^(hi|hello|hey|good morning|good afternoon|good evening)[,.\s]*/i, '');
+  
+  // If it's still a short greeting, use a generic title
+  if (text.length < 10 || /^(how are you|what's up|wassup|yo)[\s.!?]*$/i.test(text)) {
+    // Look for the second user message with more substance
+    const secondUserMessage = messages.find((msg, index) => 
+      msg.isUser && index > 0 && msg.text.trim().length > 15
+    );
+    
+    if (secondUserMessage) {
+      text = secondUserMessage.text.trim();
+    } else {
+      return "General Chat";
     }
-    return "New Conversation";
-  };
+  }
+  
+  // Truncate and clean up
+  const title = text.length > 35 ? text.substring(0, 35) + "..." : text;
+  return title.charAt(0).toUpperCase() + title.slice(1);
+};
+  const generateConversationTitleWithLLM = async (messages: Message[]): Promise<string> => {
+  // Only generate title if we have enough context (at least 2-3 exchanges)
+  if (messages.length < 4) {
+    return generateConversationTitle(messages); // Fallback to existing method
+  }
+
+  try {
+    // Get the first few messages for context
+    const contextMessages = messages.slice(0, 6); // First 3 exchanges
+    const conversation = contextMessages
+      .map(msg => `${msg.isUser ? 'User' : 'AI'}: ${msg.text}`)
+      .join('\n');
+
+    const response = await fetch(`https://mindscribe-8dar.onrender.com/chat`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'text/plain'
+      },
+      body: JSON.stringify({ 
+        message: `Based on this conversation, generate a short, descriptive title (3-6 words max) that captures the main topic or concern. Don't use quotes or say "Title:". Just respond with the title only.\n\nConversation:\n${conversation}`,
+        user_id: user ? user.id : null
+      }),
+      signal: AbortSignal.timeout(10000) // 10 second timeout
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to generate title');
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    let title = '';
+    
+    if (reader) {
+      let done = false;
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        if (value) {
+          title += decoder.decode(value, { stream: true });
+        }
+      }
+    }
+
+    // Clean up the title
+    const cleanTitle = title
+      .replace(/---SOURCES---[\s\S]*$/g, '') // Remove sources section
+      .replace(/^(Title:|Chat:|Conversation:)\s*/i, '') // Remove prefixes
+      .replace(/["\n\r]/g, '') // Remove quotes and newlines
+      .trim();
+
+    // Validate the title
+    if (cleanTitle && cleanTitle.length > 3 && cleanTitle.length < 60) {
+      return cleanTitle;
+    } else {
+      throw new Error('Generated title not suitable');
+    }
+
+  } catch (error) {
+    console.error('Error generating LLM title:', error);
+    // Fallback to existing method
+    return generateConversationTitle(messages);
+  }
+};
+
 
   // Scroll to bottom of chat
   useEffect(() => {
@@ -68,7 +152,7 @@ export default function App() {
     }, 100);
   }, [messages]);
 
-  // Enhanced session management - SIMPLIFIED
+  // Enhanced session management
   useEffect(() => {
     const initializeApp = async () => {
       setIsInitializing(true);
@@ -312,7 +396,7 @@ export default function App() {
   };
 
   const handleSignOut = async () => {
-    // Immediately update UI for fast feedback
+    // update UI
     setUser(null);
     setAccessToken(null);
     setCurrentConversationId(null);
@@ -328,7 +412,7 @@ export default function App() {
       }
     ]);
 
-    // Sign out in background with timeout
+    
     try {
       const signOutPromise = supabase.auth.signOut();
       const timeoutPromise = new Promise((_, reject) => 
@@ -338,72 +422,73 @@ export default function App() {
       await Promise.race([signOutPromise, timeoutPromise]);
     } catch (error: any) {
       console.warn('Sign out completed with delay or error:', error.message);
-      // UI already updated, so this doesn't matter
+    
     }
   };
 
-  // Manual save function with better feedback
   const saveConversation = async (msgs: Message[]) => {
-    if (!accessToken || !user || msgs.length === 0 || isSaving) return;
+  if (!accessToken || !user || msgs.length === 0 || isSaving) return;
 
-    setIsSaving(true);
-    try {
-      const conversationTitle = generateConversationTitle(msgs);
-      console.log('Manual save:', { currentConversationId, msgCount: msgs.length });
-      
-      if (currentConversationId) {
-        // Update existing conversation
-        const { error } = await supabase
-          .from('conversation')
-          .update({ 
-            history: msgs,
-            title: conversationTitle,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', currentConversationId)
-          .eq('user_id', user.id);
+  setIsSaving(true);
+  try {
+    
+    const conversationTitle = await generateConversationTitleWithLLM(msgs);
+    
+    console.log('Manual save:', { currentConversationId, msgCount: msgs.length, title: conversationTitle });
+    
+    if (currentConversationId) {
+      // Update existing conversation
+      const { error } = await supabase
+        .from('conversation')
+        .update({ 
+          history: msgs,
+          title: conversationTitle,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', currentConversationId)
+        .eq('user_id', user.id);
 
-        if (error) {
-          console.error('Error updating conversation:', error);
-          throw error;
-        }
-        console.log('Conversation updated successfully');
-        
-        // Refresh the conversations list to show updated data
-        setTimeout(() => loadConversations(''), 500);
-      } else {
-        // Create new conversation
-        const { data, error } = await supabase
-          .from('conversation')
-          .insert({ 
-            user_id: user.id,
-            history: msgs,
-            title: conversationTitle,
-            updated_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-
-        if (error) {
-          console.error('Error creating conversation:', error);
-          throw error;
-        }
-        
-        if (data) {
-          console.log('New conversation created:', data.id);
-          setCurrentConversationId(data.id);
-          
-          // Refresh the conversations list to show new conversation
-          setTimeout(() => loadConversations(''), 500);
-        }
+      if (error) {
+        console.error('Error updating conversation:', error);
+        throw error;
       }
-    } catch (error: any) {
-      console.error('Error saving conversation:', error);
-      alert('Failed to save conversation. Please try again.');
-    } finally {
-      setIsSaving(false);
+      console.log('Conversation updated successfully with title:', conversationTitle);
+      
+      // Refresh the conversations list to show updated data
+      setTimeout(() => loadConversations(''), 500);
+    } else {
+      // Create new conversation
+      const { data, error } = await supabase
+        .from('conversation')
+        .insert({ 
+          user_id: user.id,
+          history: msgs,
+          title: conversationTitle,
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating conversation:', error);
+        throw error;
+      }
+      
+      if (data) {
+        console.log('New conversation created with title:', conversationTitle);
+        setCurrentConversationId(data.id);
+        
+        // Refresh the conversations list to show new conversation
+        setTimeout(() => loadConversations(''), 500);
+      }
     }
-  };
+  } catch (error: any) {
+    console.error('Error saving conversation:', error);
+    alert('Failed to save conversation. Please try again.');
+  } finally {
+    setIsSaving(false);
+  }
+};
 
   const handleSendMessage = async (text: string) => {
     const newUserMessage: Message = {
