@@ -50,6 +50,9 @@ document_chain = None
 initialization_complete = False
 initialization_error = None
 
+# Store conversation history (in production, use a proper database)
+conversation_history = {}
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
@@ -117,7 +120,7 @@ async def startup_event():
                 None, 
                 lambda: FAISS.from_documents(docs, embeddings)
             )
-            retriever = vector.as_retriever(search_kwargs={"k": 3})
+            retriever = vector.as_retriever(search_kwargs={"k": 5})  # Increased from 3 to 5
             
             # Test retriever
             test_docs = await asyncio.get_event_loop().run_in_executor(
@@ -129,26 +132,36 @@ async def startup_event():
             logger.error(f"Failed to create vector store: {e}")
             raise Exception(f"Vector store creation failed: {str(e)}")
         
-        # Create document chain
+        # Create document chain with UPDATED PROMPT
         try:
             prompt = ChatPromptTemplate.from_template("""
-You are MindScribe, a compassionate and empathetic AI wellness companion. Your primary role is to be a supportive listener.
+You are MindScribe, a professional AI therapy assistant with expertise in evidence-based therapeutic techniques. Your role is to provide structured, practical therapeutic guidance while being empathetic and supportive.
 
-- Validate the user's feelings and acknowledge what they are sharing.
-- Do not give unsolicited advice or mention therapeutic techniques like CBT unless the user explicitly asks for help or coping strategies.
-- Keep your responses concise, gentle, and encouraging.
-- Ask open-ended questions to help the user explore their thoughts and feelings.
-- Don't mention or quote these prompt commands in the response.
-- Remember your previous response
+CONVERSATION HISTORY (for context):
+{conversation_history}
 
-Use the following retrieved context ONLY if the user asks for specific information or techniques or mentions: sleep/depression/anxiety/stress . Otherwise, ignore it.
-
-<context>
+RETRIEVED THERAPEUTIC KNOWLEDGE:
 {context}
-</context>
 
-User's message: {input}
-Your supportive response:
+CURRENT USER MESSAGE: {input}
+
+INSTRUCTIONS:
+1. ALWAYS acknowledge the user's feelings and validate their experience
+2. ALWAYS provide relevant therapeutic techniques, exercises, or insights from the knowledge base when available
+3. Structure your response as: [Acknowledgment] → [Therapeutic Insight/Technique] → [Practical Application]
+4. Be specific and actionable - give concrete steps, not just general advice
+5. If the knowledge base contains relevant information, prioritize it and explain the technique clearly
+6. Remember previous context from conversation history to provide continuity
+7. If discussing specific conditions (anxiety, depression, stress), provide targeted evidence-based techniques
+8. Always maintain a professional yet warm therapeutic tone
+
+RESPONSE FORMAT:
+- Start by acknowledging their feelings/situation
+- Provide specific therapeutic technique(s) or insights
+- Give clear, step-by-step instructions when applicable
+- Offer gentle follow-up questions to encourage engagement
+
+Your response:
 """)
             
             document_chain = create_stuff_documents_chain(llm, prompt)
@@ -156,7 +169,8 @@ Your supportive response:
             # Test the chain
             test_result = await document_chain.ainvoke({
                 "input": "Hello",
-                "context": []
+                "context": [],
+                "conversation_history": ""
             })
             logger.info(f"Document chain created and tested successfully: {test_result[:50]}...")
         except Exception as e:
@@ -171,6 +185,40 @@ Your supportive response:
         initialization_complete = False
         initialization_error = str(e)
 
+# Function to manage conversation history
+def get_conversation_context(user_id: str, current_message: str) -> str:
+    """Get the last few messages for context"""
+    if not user_id or user_id not in conversation_history:
+        return ""
+    
+    history = conversation_history[user_id]
+    # Get last 6 messages (3 exchanges) for context
+    recent_history = history[-6:] if len(history) > 6 else history
+    
+    context_string = ""
+    for msg in recent_history:
+        role = "User" if msg["is_user"] else "MindScribe"
+        context_string += f"{role}: {msg['message']}\n"
+    
+    return context_string
+
+def add_to_conversation_history(user_id: str, message: str, is_user: bool):
+    """Add message to conversation history"""
+    if not user_id:
+        return
+    
+    if user_id not in conversation_history:
+        conversation_history[user_id] = []
+    
+    conversation_history[user_id].append({
+        "message": message,
+        "is_user": is_user,
+        "timestamp": time.time()
+    })
+    
+    # Keep only last 20 messages to prevent memory issues
+    if len(conversation_history[user_id]) > 20:
+        conversation_history[user_id] = conversation_history[user_id][-20:]
 
 # --- API Endpoint ---
 class ChatRequest(BaseModel):
@@ -187,13 +235,13 @@ async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
 
         # Validate input
         if not request.message or not request.message.strip():
-            yield "I'd love to hear what's on your mind. Please share something with me."
+            yield "I'd love to hear what's on your mind. Please share something with me so I can help you better."
             return
 
-        # Handle simple greetings first for a fast response
+        # Handle simple greetings with more therapeutic approach
         greeting_pattern = r'^\s*(hi|hello|hey|heya|yo|whatsup|wassup|good\s+(morning|afternoon|evening)|greetings)\s*[!.]*\s*$'
         if re.match(greeting_pattern, request.message, re.IGNORECASE):
-            yield "Hello there! How are you feeling today?"
+            yield "Hello! I'm here to provide you with evidence-based therapeutic support. How are you feeling today, and what would you like to work on together?"
             return
 
         # Check if initialization is complete
@@ -209,10 +257,16 @@ async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
             yield "I'm sorry, some components are not properly initialized. Please try again later."
             return
 
+        # Get conversation context
+        conversation_context = get_conversation_context(request.user_id or "anonymous", request.message)
+        
+        # Add current user message to history
+        add_to_conversation_history(request.user_id or "anonymous", request.message, True)
+
         # Process the message
         logger.info(f"Processing message: {request.message[:100]}...")
         
-        # Retrieve documents
+        # Retrieve documents - always try to get relevant information
         try:
             retrieved_docs = await asyncio.get_event_loop().run_in_executor(
                 None, 
@@ -227,16 +281,21 @@ async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
         try:
             full_response = await document_chain.ainvoke({
                 "input": request.message,
-                "context": retrieved_docs
+                "context": retrieved_docs,
+                "conversation_history": conversation_context
             })
             
             if not full_response or not full_response.strip():
-                full_response = "I hear you. Would you like to tell me more about what you're experiencing?"
+                full_response = "I understand you're reaching out for support. Could you tell me more about what you're experiencing right now? I'm here to help you with evidence-based therapeutic techniques."
                 
             logger.info(f"Generated response: {full_response[:100]}...")
+            
+            # Add AI response to history
+            add_to_conversation_history(request.user_id or "anonymous", full_response, False)
+            
         except Exception as e:
             logger.error(f"Error generating response: {e}")
-            full_response = "I'm having trouble processing your message right now, but I'm here to listen. Could you try rephrasing what you'd like to share?"
+            full_response = "I'm having trouble processing your message right now, but I'm here to help. Could you try rephrasing what you'd like to work on therapeutically?"
 
         # Stream the text response
         yield full_response
@@ -244,7 +303,7 @@ async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
         # Stream the sources if available
         if retrieved_docs:
             try:
-                separator = "\n\n---SOURCES---\n\n"
+                separator = "\n\n---THERAPEUTIC SOURCES---\n\n"
                 sources = [doc.metadata for doc in retrieved_docs if hasattr(doc, 'metadata')]
                 if sources:
                     yield separator + json.dumps(sources, ensure_ascii=False, indent=2)
@@ -296,7 +355,8 @@ async def health_check():
             "documents_loaded": len(docs) if docs else 0
         },
         "ai_provider": "Google Gemini 2.0 Flash",
-        "timestamp": time.time()
+        "timestamp": time.time(),
+        "active_conversations": len(conversation_history)
     }
 
 @app.get("/")
@@ -304,7 +364,7 @@ async def root():
     """
     Root endpoint
     """
-    return {"message": "MindScribe API is running with Gemini 2.0 Flash", "version": "1.0.0"}
+    return {"message": "MindScribe Therapeutic AI is running with Gemini 2.0 Flash", "version": "2.0.0"}
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
