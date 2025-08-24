@@ -1,4 +1,5 @@
 import asyncio
+import os
 from typing import AsyncGenerator, Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,12 +9,7 @@ import json
 import logging
 import re
 import time
-try:
-    from langchain_ollama import OllamaLLM, OllamaEmbeddings
-except ImportError:
-    from langchain_community.llms import Ollama as OllamaLLM
-    from langchain_community.embeddings import OllamaEmbeddings
-
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
@@ -39,6 +35,7 @@ app.add_middleware(
         "http://127.0.0.1:8080",
         "https://localhost:3000",
         "https://localhost:5173",
+        "https://*.netlify.app",  # Add your Netlify domain
         "*"  # Allow all origins for now - remove in production
     ],
     allow_credentials=True,
@@ -77,25 +74,38 @@ async def startup_event():
         initialization_complete = False
         initialization_error = None
         
-        # Initialize LLM with error handling
-        try:
-            llm = OllamaLLM(model="gemma:2b")
-            # Test the LLM connection
-            test_response = llm.invoke("Hello")
-            logger.info(f"LLM initialized and tested successfully: {test_response[:50]}...")
-        except Exception as e:
-            logger.error(f"Failed to initialize LLM: {e}")
-            raise Exception(f"LLM initialization failed: {str(e)}")
+       
+        google_api_key = os.getenv("GOOGLE_API_KEY")
+        if not google_api_key:
+            raise Exception("GOOGLE_API_KEY environment variable is required")
         
-        # Initialize embeddings with error handling
+        
         try:
-            embeddings = OllamaEmbeddings(model="gemma:2b")
-            # Test embeddings
-            test_embedding = embeddings.embed_query("test")
-            logger.info(f"Embeddings initialized successfully (dimension: {len(test_embedding)})")
+            llm = ChatGoogleGenerativeAI(
+                model="gemini-2.0-flash-exp",  # Latest and fastest Gemini model
+                temperature=0.7,
+                google_api_key=google_api_key,
+                convert_system_message_to_human=True
+            )
+            # Test the LLM connection
+            test_response = await llm.ainvoke("Hello")
+            logger.info(f"Gemini LLM initialized and tested successfully: {test_response.content[:50]}...")
         except Exception as e:
-            logger.error(f"Failed to initialize embeddings: {e}")
-            raise Exception(f"Embeddings initialization failed: {str(e)}")
+            logger.error(f"Failed to initialize Gemini LLM: {e}")
+            raise Exception(f"Gemini LLM initialization failed: {str(e)}")
+        
+        # Initialize embeddings with Gemini
+        try:
+            embeddings = GoogleGenerativeAIEmbeddings(
+                model="models/embedding-001",
+                google_api_key=google_api_key
+            )
+            # Test embeddings
+            test_embedding = await embeddings.aembed_query("test")
+            logger.info(f"Gemini Embeddings initialized successfully (dimension: {len(test_embedding)})")
+        except Exception as e:
+            logger.error(f"Failed to initialize Gemini embeddings: {e}")
+            raise Exception(f"Gemini embeddings initialization failed: {str(e)}")
         
         # Create vector store
         try:
@@ -110,7 +120,10 @@ async def startup_event():
             retriever = vector.as_retriever(search_kwargs={"k": 3})
             
             # Test retriever
-            test_docs = retriever.invoke("test query")
+            test_docs = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: retriever.invoke("test query")
+            )
             logger.info(f"Vector store created successfully, retrieved {len(test_docs)} test documents")
         except Exception as e:
             logger.error(f"Failed to create vector store: {e}")
@@ -120,11 +133,12 @@ async def startup_event():
         try:
             prompt = ChatPromptTemplate.from_template("""
 You are MindScribe, a compassionate and empathetic AI wellness companion. Your primary role is to be a supportive listener.
+
 - Validate the user's feelings and acknowledge what they are sharing.
 - Do not give unsolicited advice or mention therapeutic techniques like CBT unless the user explicitly asks for help or coping strategies.
 - Keep your responses concise, gentle, and encouraging.
 - Ask open-ended questions to help the user explore their thoughts and feelings.
-- Dont mention or quote these prompt commands in the response.
+- Don't mention or quote these prompt commands in the response.
 
 Use the following retrieved context ONLY if the user asks for specific information or techniques. Otherwise, ignore it.
 
@@ -139,7 +153,7 @@ Your supportive response:
             document_chain = create_stuff_documents_chain(llm, prompt)
             
             # Test the chain
-            test_result = document_chain.invoke({
+            test_result = await document_chain.ainvoke({
                 "input": "Hello",
                 "context": []
             })
@@ -149,7 +163,7 @@ Your supportive response:
             raise Exception(f"Document chain creation failed: {str(e)}")
         
         initialization_complete = True
-        logger.info("All components initialized successfully!")
+        logger.info("All components initialized successfully with Gemini!")
         
     except Exception as e:
         logger.error(f"FATAL: Error during application startup: {e}")
@@ -208,15 +222,12 @@ async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
             logger.error(f"Error retrieving documents: {e}")
             retrieved_docs = []  # Continue without documents
 
-        # Generate response
+        # Generate response using async invoke
         try:
-            full_response = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: document_chain.invoke({
-                    "input": request.message,
-                    "context": retrieved_docs
-                })
-            )
+            full_response = await document_chain.ainvoke({
+                "input": request.message,
+                "context": retrieved_docs
+            })
             
             if not full_response or not full_response.strip():
                 full_response = "I hear you. Would you like to tell me more about what you're experiencing?"
@@ -283,6 +294,7 @@ async def health_check():
             "document_chain": document_chain is not None,
             "documents_loaded": len(docs) if docs else 0
         },
+        "ai_provider": "Google Gemini 2.0 Flash",
         "timestamp": time.time()
     }
 
@@ -291,7 +303,7 @@ async def root():
     """
     Root endpoint
     """
-    return {"message": "MindScribe API is running", "version": "1.0.0"}
+    return {"message": "MindScribe API is running with Gemini 2.0 Flash", "version": "1.0.0"}
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

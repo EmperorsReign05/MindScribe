@@ -4,6 +4,7 @@ pydantic
 langchain
 langchain-community
 langchain-core
+langchain-google-genai
 faiss-cpu
 ollama
 gunicorn
