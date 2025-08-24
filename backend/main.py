@@ -301,14 +301,14 @@ async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
         yield full_response
 
         # Stream the sources if available
-        if retrieved_docs:
+        '''if retrieved_docs:
             try:
                 separator = "\n\n---THERAPEUTIC SOURCES---\n\n"
                 sources = [doc.metadata for doc in retrieved_docs if hasattr(doc, 'metadata')]
                 if sources:
                     yield separator + json.dumps(sources, ensure_ascii=False, indent=2)
             except Exception as e:
-                logger.error(f"Error processing sources: {e}")
+                logger.error(f"Error processing sources: {e}")'''
 
     except Exception as e:
         logger.error(f"Critical error in stream_generator: {e}")
