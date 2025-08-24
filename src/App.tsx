@@ -421,8 +421,8 @@ export default function App() {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-      const response = await fetch(`http://127.0.0.1:8000/chat`, {
+const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://mindscribe-8dar.onrender.com';
+const response = await fetch(`${backendUrl}/chat`,{
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
