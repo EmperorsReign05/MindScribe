@@ -1,7 +1,7 @@
 MindScribe 🧠✨
 MindScribe is an AI-powered wellness companion designed to be a supportive and empathetic listener. Built with a powerful RAG (Retrieval-Augmented Generation) pipeline, it provides context-aware, helpful conversations based on a curated knowledge base of therapeutic techniques.
 
-
+By Team Synapse for IIC 
 
 Features
 RAG-Powered Conversations: The AI uses a knowledge base of therapeutic techniques (like CBT and Mindfulness) to provide informed and relevant responses.
