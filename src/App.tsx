@@ -98,7 +98,7 @@ export default function App() {
         message: `Based on this conversation, generate a short, descriptive title (3-6 words max) that captures the main topic or concern. Don't use quotes or say "Title:". Just respond with the title only.\n\nConversation:\n${conversation}`,
         user_id: user ? user.id : null
       }),
-      signal: AbortSignal.timeout(10000) // 10 second timeout
+      signal: AbortSignal.timeout(20000) // 10 second timeout
     });
 
     if (!response.ok) {
@@ -204,7 +204,7 @@ export default function App() {
       setMessages([
         {
           id: "welcome",
-          text: "Hello! I'm your AI companion here to listen and support you. To save your conversations and access them later, please sign in or create an account.",
+          text: "Hello! I'm your AI companion here to listen and support you. To save your conversations and access them later, please sign in or create an account. The first response may take some time.",
           isUser: false,
           timestamp: formatTimestamp()
         }
@@ -631,7 +631,7 @@ const response = await fetch(`${backendUrl}/chat`,{
   }
 
   return (
-    <div className="h-screen flex bg-gradient-to-br from-slate-50 to-blue-50">
+    <div className="h-screen flex ">
       {/* Sidebar */}
       {user && (
         <>
@@ -725,7 +725,7 @@ const response = await fetch(`${backendUrl}/chat`,{
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 flex flex-col min-h-0 h-screen">
         {/* Header */}
         <header className="bg-white/80 backdrop-blur-lg border-b border-slate-200/60 px-4 sm:px-6 py-4 shadow-sm">
           <div className="flex items-center justify-between max-w-6xl mx-auto">

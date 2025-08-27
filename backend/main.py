@@ -35,8 +35,8 @@ app.add_middleware(
         "http://127.0.0.1:8080",
         "https://localhost:3000",
         "https://localhost:5173",
-        "https://*.netlify.app",  # Add your Netlify domain
-        "*"  # Allow all origins for now - remove in production
+        "https://synapse-mindscribe.netlify.app/",  # Frontend
+        
     ],
     allow_credentials=True,
     allow_methods=["*"],
