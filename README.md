@@ -35,7 +35,6 @@ Node.js and npm (or your preferred package manager)
 
 Python 3.10+ and pip
 
-Ollama installed and running with the gemma:2b model (ollama run gemma:2b)
 
 1. Clone the Repository
 Bash
