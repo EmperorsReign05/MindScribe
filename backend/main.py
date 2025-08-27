@@ -35,7 +35,8 @@ app.add_middleware(
         "http://127.0.0.1:8080",
         "https://localhost:3000",
         "https://localhost:5173",
-        "https://synapse-mindscribe.netlify.app/",  # Frontend
+        "https://synapse-mindscribe.netlify.app/",
+        "*"  # Frontend
         
     ],
     allow_credentials=True,
