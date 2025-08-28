@@ -39,7 +39,7 @@ Python 3.10+ and pip
 1. Clone the Repository
 Bash
 
-git clone https://github.com/your-username/mindscribe.git
+git clone https://github.com/EmperorsReign05/MindScribe.git
 cd mindscribe
 2. Frontend Setup
 The frontend is a standard Vite + React application.
