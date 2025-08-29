@@ -360,6 +360,10 @@ async def health_check():
         "active_conversations": len(conversation_history)
     }
 
+@app.get("/ping")
+def ping():
+    return "OK"
+
 @app.get("/")
 async def root():
     """
