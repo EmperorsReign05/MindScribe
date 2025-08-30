@@ -1,4 +1,4 @@
-MindScribe 🧠✨
+
 MindScribe is an AI-powered wellness companion designed to be a supportive and empathetic listener. Built with a powerful RAG (Retrieval-Augmented Generation) pipeline, it provides context-aware, helpful conversations based on a curated knowledge base of therapeutic techniques.
 
 ![Demo ss](</src/assets/minscribe-demo.png>)
@@ -81,40 +81,28 @@ The backend API will now be running on http://127.0.0.1:8000.
 
 Deployment
 The application is designed to be deployed with a service like Render for the backend and Netlify for the frontend.
-
 Backend (Render)
 Create a new Web Service on Render and connect your GitHub repository.
 
 Set the Root Directory to backend.
 
 Use the following commands:
-
 Build Command: pip install -r requirements.txt
-
 Start Command: gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app
-
 Render will provide a URL for your live backend.
 
 Frontend (Netlify)
 Create a new site on Netlify and connect it to your GitHub repository.
-
 Set the build settings:
-
 Build command: npm run build
-
 Publish directory: dist
-
 Add an environment variable:
-
 Key: VITE_BACKEND_URL
-
 Value: The URL of your deployed Render backend.
 
 Deploy the site.
 
 Acknowledgments
 UI components are based on the excellent shadcn/ui.
-
 The RAG implementation is powered by the LangChain framework.
-
 User authentication and database services are provided by Supabase.
