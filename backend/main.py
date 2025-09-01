@@ -23,7 +23,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 app = FastAPI()
 
-# Enhanced CORS middleware with specific origins
+#CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -51,7 +51,7 @@ document_chain = None
 initialization_complete = False
 initialization_error = None
 
-# Store conversation history (in production, use a proper database)
+# Store conversation history
 conversation_history = {}
 
 @app.middleware("http")
@@ -86,7 +86,7 @@ async def startup_event():
         
         try:
             llm = ChatGoogleGenerativeAI(
-                model="gemini-2.0-flash-exp",  # Latest and fastest Gemini model
+                model="gemini-2.0-flash-exp", 
                 temperature=0.7,
                 google_api_key=google_api_key,
                 convert_system_message_to_human=True
@@ -121,7 +121,7 @@ async def startup_event():
                 None, 
                 lambda: FAISS.from_documents(docs, embeddings)
             )
-            retriever = vector.as_retriever(search_kwargs={"k": 5})  # Increased from 3 to 5
+            retriever = vector.as_retriever(search_kwargs={"k": 5}) 
             
             # Test retriever
             test_docs = await asyncio.get_event_loop().run_in_executor(
@@ -133,7 +133,7 @@ async def startup_event():
             logger.error(f"Failed to create vector store: {e}")
             raise Exception(f"Vector store creation failed: {str(e)}")
         
-        # Create document chain with UPDATED PROMPT
+        # Create document chain with PROMPT
         try:
             prompt = ChatPromptTemplate.from_template("""
 You are MindScribe, a professional AI therapy assistant with expertise in evidence-based therapeutic techniques. Your role is to provide structured, practical therapeutic guidance while being empathetic and supportive.
@@ -221,7 +221,7 @@ def add_to_conversation_history(user_id: str, message: str, is_user: bool):
     if len(conversation_history[user_id]) > 20:
         conversation_history[user_id] = conversation_history[user_id][-20:]
 
-# --- API Endpoint ---
+#API Endpoint
 class ChatRequest(BaseModel):
     message: str
     user_id: Optional[str] = None
@@ -239,7 +239,6 @@ async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
             yield "I'd love to hear what's on your mind. Please share something with me so I can help you better."
             return
 
-        # Handle simple greetings with more therapeutic approach
         greeting_pattern = r'^\s*(hi|hello|hey|heya|yo|whatsup|wassup|good\s+(morning|afternoon|evening)|greetings)\s*[!.]*\s*$'
         if re.match(greeting_pattern, request.message, re.IGNORECASE):
             yield "Hello! I'm here to provide you with evidence-based therapeutic support. How are you feeling today, and what would you like to work on together?"
@@ -267,7 +266,7 @@ async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
         # Process the message
         logger.info(f"Processing message: {request.message[:100]}...")
         
-        # Retrieve documents - always try to get relevant information
+        # Retrieve documents
         try:
             retrieved_docs = await asyncio.get_event_loop().run_in_executor(
                 None, 
@@ -301,7 +300,7 @@ async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
         # Stream the text response
         yield full_response
 
-        # Stream the sources if available
+        # Stream the sources if available (commented out)
         '''if retrieved_docs:
             try:
                 separator = "\n\n---THERAPEUTIC SOURCES---\n\n"
