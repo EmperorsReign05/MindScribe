@@ -27,7 +27,7 @@ interface Conversation {
   id: string;
   title: string;
   updated_at: string;
-  history: Message[]; // Changed from messages to history to match your schema
+  history: Message[]; 
 }
 
 export default function App() {
@@ -54,12 +54,11 @@ export default function App() {
   
   let text = firstUserMessage.text.trim();
   
-  // Remove common greetings and get to the actual content
+  // Remove common greetings 
   text = text.replace(/^(hi|hello|hey|good morning|good afternoon|good evening)[,.\s]*/i, '');
-  
-  // If it's still a short greeting, use a generic title
+ 
   if (text.length < 10 || /^(how are you|what's up|wassup|yo)[\s.!?]*$/i.test(text)) {
-    // Look for the second user message with more substance
+    
     const secondUserMessage = messages.find((msg, index) => 
       msg.isUser && index > 0 && msg.text.trim().length > 15
     );
@@ -71,12 +70,12 @@ export default function App() {
     }
   }
   
-  // Truncate and clean up
+  
   const title = text.length > 35 ? text.substring(0, 35) + "..." : text;
   return title.charAt(0).toUpperCase() + title.slice(1);
 };
   const generateConversationTitleWithLLM = async (messages: Message[]): Promise<string> => {
-  // Only generate title if we have enough context (at least 2-3 exchanges)
+ 
   if (messages.length < 4) {
     return generateConversationTitle(messages); // Fallback to existing method
   }
@@ -98,7 +97,7 @@ export default function App() {
         message: `Based on this conversation, generate a short, descriptive title (3-6 words max) that captures the main topic or concern. Don't use quotes or say "Title:". Just respond with the title only.\n\nConversation:\n${conversation}`,
         user_id: user ? user.id : null
       }),
-      signal: AbortSignal.timeout(20000) // 10 second timeout
+      signal: AbortSignal.timeout(20000)
     });
 
     if (!response.ok) {
@@ -120,14 +119,14 @@ export default function App() {
       }
     }
 
-    // Clean up the title
+   
     const cleanTitle = title
-      .replace(/---SOURCES---[\s\S]*$/g, '') // Remove sources section
-      .replace(/^(Title:|Chat:|Conversation:)\s*/i, '') // Remove prefixes
-      .replace(/["\n\r]/g, '') // Remove quotes and newlines
+      .replace(/---SOURCES---[\s\S]*$/g, '') 
+      .replace(/^(Title:|Chat:|Conversation:)\s*/i, '') 
+      .replace(/["\n\r]/g, '') 
       .trim();
 
-    // Validate the title
+    
     if (cleanTitle && cleanTitle.length > 3 && cleanTitle.length < 60) {
       return cleanTitle;
     } else {
@@ -136,7 +135,6 @@ export default function App() {
 
   } catch (error) {
     console.error('Error generating LLM title:', error);
-    // Fallback to existing method
     return generateConversationTitle(messages);
   }
 };
@@ -213,7 +211,6 @@ export default function App() {
 
     initializeApp();
 
-    // Listen for auth state changes - OPTIMIZED
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state changed:', event);
       
@@ -225,10 +222,9 @@ export default function App() {
         localStorage.setItem('mindscribe_user', JSON.stringify(userData));
         localStorage.setItem('mindscribe_token', session.access_token);
         
-        // Load conversations without blocking UI
         setTimeout(() => loadConversations(session.access_token), 100);
       } else if (event === 'SIGNED_OUT') {
-        // Fast sign out - don't wait for anything
+       
         setUser(null);
         setAccessToken(null);
         setCurrentConversationId(null);
@@ -256,7 +252,7 @@ export default function App() {
     try {
       console.log('Loading conversations for user:', user.id);
       
-      // Add timeout to prevent hanging
+     
       const queryPromise = supabase
         .from('conversation')
         .select('*')
@@ -278,7 +274,7 @@ export default function App() {
       console.log('Loaded conversations:', conversationList);
       setConversations(conversationList || []);
       
-      // Only set welcome message if no current conversation and no messages
+     
       if (messages.length === 0 && !currentConversationId) {
         if (conversationList && conversationList.length > 0) {
           const latestConversation = conversationList[0];
@@ -297,7 +293,6 @@ export default function App() {
       }
     } catch (error: any) {
       console.error('Error loading conversations:', error);
-      // Set fallback message on timeout
       if (messages.length === 0) {
         setMessages([
           {
@@ -335,7 +330,7 @@ export default function App() {
         console.log('Loaded conversation data:', conversation);
         setMessages(conversation.history || []);
         setCurrentConversationId(conversationId);
-        setShowSidebar(false); // Close sidebar on mobile
+        setShowSidebar(false); 
       }
     } catch (error: any) {
       console.error('Error loading conversation:', error);
@@ -345,15 +340,14 @@ export default function App() {
   const deleteConversation = async (conversationId: string) => {
     if (!accessToken || !user) return;
     
-    // Immediately update UI for fast feedback
+    
     setConversations(prev => prev.filter(conv => conv.id !== conversationId));
     
-    // If we deleted the current conversation, start a new one immediately
+   
     if (currentConversationId === conversationId) {
       startNewConversation();
     }
 
-    // Delete in background with timeout
     try {
       console.log('Deleting conversation:', conversationId);
       
@@ -379,7 +373,7 @@ export default function App() {
       }
     } catch (error: any) {
       console.error('Error deleting conversation:', error);
-      // Revert UI changes on timeout/error
+      
       loadConversations(accessToken);
     }
   };
@@ -478,7 +472,6 @@ export default function App() {
         console.log('New conversation created with title:', conversationTitle);
         setCurrentConversationId(data.id);
         
-        // Refresh the conversations list to show new conversation
         setTimeout(() => loadConversations(''), 500);
       }
     }
@@ -498,7 +491,6 @@ export default function App() {
       timestamp: formatTimestamp(),
     };
 
-    // Add user message immediately
     const updatedMessages = [...messages, newUserMessage];
     setMessages(updatedMessages);
     setIsTyping(true);
@@ -541,7 +533,6 @@ const response = await fetch(`${backendUrl}/chat`,{
         sources: [],
       };
 
-      // Add AI message placeholder
       setMessages(prev => [...prev, aiMessage]);
 
       const reader = response.body.getReader();
@@ -576,7 +567,6 @@ const response = await fetch(`${backendUrl}/chat`,{
         );
       }
 
-      // Auto-save disabled - user must manually save
 
     } catch (error: any) {
       console.error("Chat error:", error);
@@ -635,7 +625,6 @@ const response = await fetch(`${backendUrl}/chat`,{
       {/* Sidebar */}
       {user && (
         <>
-          {/* Overlay for mobile */}
           {showSidebar && (
             <div 
               className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden"
@@ -659,7 +648,6 @@ const response = await fetch(`${backendUrl}/chat`,{
                 </Button>
               </div>
               
-              {/* New Chat Button */}
               <div className="p-4">
                 <Button 
                   onClick={startNewConversation}
