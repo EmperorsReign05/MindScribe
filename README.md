@@ -1,5 +1,5 @@
 
-MindScribe is an AI-powered wellness companion designed to be a supportive and empathetic listener. Built with a powerful RAG (Retrieval-Augmented Generation) pipeline, it provides context-aware, helpful conversations based on a curated knowledge base of therapeutic techniques.
+MindScribe is an AI-powered wellness companion designed to be a supportive and empathetic listener. Built with a powerful RAG (Retrieval-Augmented Generation) pipeline, it provides context-aware, helpful conversations based on a curated knowledge base of therapeutic techniques. The backend is hosted for free on Render, so you might experience cold starts.
 
 ![Demo ss](</src/assets/minscribe-demo.png>)
 
