@@ -78,10 +78,12 @@ async def startup_event():
         initialization_complete = False
         initialization_error = None
         
-       
+        
         google_api_key = os.getenv("GOOGLE_API_KEY")
         if not google_api_key:
-            raise Exception("GOOGLE_API_KEY environment variable is required")
+            logger.error("GOOGLE_API_KEY environment variable is not set!")
+            initialization_error = "GOOGLE_API_KEY environment variable is required"
+            return
         
         
         # Initialize LLM with Groq via OpenAI client compatibility
@@ -90,14 +92,15 @@ async def startup_event():
                 model="openai/gpt-oss-120b",
                 temperature=0.7,
                 api_key=google_api_key,
-                base_url="https://api.groq.com/openai/v1"
+                base_url="https://api.groq.com/openai/v1/responses"
             )
             # Test the LLM connection
             test_response = await llm.ainvoke("Hello")
             logger.info(f"Groq LLM initialized and tested successfully: {test_response.content[:50]}...")
         except Exception as e:
             logger.error(f"Failed to initialize Groq LLM: {e}")
-            raise Exception(f"Groq LLM initialization failed: {str(e)}")
+            initialization_error = f"Groq LLM initialization failed: {str(e)}"
+            return
         
         # Initialize embeddings with Gemini
         # Initialize embeddings with HuggingFace (Local)
@@ -110,7 +113,8 @@ async def startup_event():
             logger.info(f"HuggingFace Embeddings initialized successfully (dimension: {len(test_embedding)})")
         except Exception as e:
             logger.error(f"Failed to initialize HuggingFace embeddings: {e}")
-            raise Exception(f"HuggingFace embeddings initialization failed: {str(e)}")
+            initialization_error = f"HuggingFace embeddings initialization failed: {str(e)}"
+            return
         
         # Create vector store
         try:
@@ -132,7 +136,8 @@ async def startup_event():
             logger.info(f"Vector store created successfully, retrieved {len(test_docs)} test documents")
         except Exception as e:
             logger.error(f"Failed to create vector store: {e}")
-            raise Exception(f"Vector store creation failed: {str(e)}")
+            initialization_error = f"Vector store creation failed: {str(e)}"
+            return
         
         
         # Create prompt template for structured responses
@@ -180,7 +185,8 @@ Your response:
             logger.info(f"LLM and prompt template initialized successfully: {test_result.content[:50]}...")
         except Exception as e:
             logger.error(f"Failed to create prompt template: {e}")
-            raise Exception(f"Prompt template creation failed: {str(e)}")
+            initialization_error = f"Prompt template creation failed: {str(e)}"
+            return
         
         initialization_complete = True
         logger.info("All components initialized successfully with Groq/OpenAI Compatible!")
