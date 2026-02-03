@@ -9,9 +9,9 @@ import json
 import logging
 import re
 import time
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_openai import ChatOpenAI
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 
 try:
@@ -84,32 +84,33 @@ async def startup_event():
             raise Exception("GOOGLE_API_KEY environment variable is required")
         
         
+        # Initialize LLM with Groq via OpenAI client compatibility
         try:
-            llm = ChatGoogleGenerativeAI(
-                model="gemini-2.0-flash-exp", 
+            llm = ChatOpenAI(
+                model="openai/gpt-oss-120b",
                 temperature=0.7,
-                google_api_key=google_api_key,
-                convert_system_message_to_human=True
+                api_key=google_api_key,
+                base_url="https://api.groq.com/openai/v1"
             )
             # Test the LLM connection
             test_response = await llm.ainvoke("Hello")
-            logger.info(f"Gemini LLM initialized and tested successfully: {test_response.content[:50]}...")
+            logger.info(f"Groq LLM initialized and tested successfully: {test_response.content[:50]}...")
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini LLM: {e}")
-            raise Exception(f"Gemini LLM initialization failed: {str(e)}")
+            logger.error(f"Failed to initialize Groq LLM: {e}")
+            raise Exception(f"Groq LLM initialization failed: {str(e)}")
         
         # Initialize embeddings with Gemini
+        # Initialize embeddings with HuggingFace (Local)
         try:
-            embeddings = GoogleGenerativeAIEmbeddings(
-                model="models/embedding-001",
-                google_api_key=google_api_key
+            embeddings = HuggingFaceEmbeddings(
+                model_name="all-MiniLM-L6-v2"
             )
             # Test embeddings
             test_embedding = await embeddings.aembed_query("test")
-            logger.info(f"Gemini Embeddings initialized successfully (dimension: {len(test_embedding)})")
+            logger.info(f"HuggingFace Embeddings initialized successfully (dimension: {len(test_embedding)})")
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini embeddings: {e}")
-            raise Exception(f"Gemini embeddings initialization failed: {str(e)}")
+            logger.error(f"Failed to initialize HuggingFace embeddings: {e}")
+            raise Exception(f"HuggingFace embeddings initialization failed: {str(e)}")
         
         # Create vector store
         try:
@@ -133,7 +134,8 @@ async def startup_event():
             logger.error(f"Failed to create vector store: {e}")
             raise Exception(f"Vector store creation failed: {str(e)}")
         
-        # Create document chain with PROMPT
+        
+        # Create prompt template for structured responses
         try:
             prompt = ChatPromptTemplate.from_template("""
 You are MindScribe, a professional AI therapy assistant with expertise in evidence-based therapeutic techniques. Your role is to provide structured, practical therapeutic guidance while being empathetic and supportive.
@@ -165,21 +167,23 @@ RESPONSE FORMAT:
 Your response:
 """)
             
-            document_chain = create_stuff_documents_chain(llm, prompt)
+            # Store prompt globally instead of creating a chain
+            document_chain = prompt
             
-            # Test the chain
-            test_result = await document_chain.ainvoke({
-                "input": "Hello",
-                "context": [],
-                "conversation_history": ""
-            })
-            logger.info(f"Document chain created and tested successfully: {test_result[:50]}...")
+            # Test the LLM with a simple prompt
+            test_prompt = prompt.format_messages(
+                input="Hello",
+                context="",
+                conversation_history=""
+            )
+            test_result = await llm.ainvoke(test_prompt)
+            logger.info(f"LLM and prompt template initialized successfully: {test_result.content[:50]}...")
         except Exception as e:
-            logger.error(f"Failed to create document chain: {e}")
-            raise Exception(f"Document chain creation failed: {str(e)}")
+            logger.error(f"Failed to create prompt template: {e}")
+            raise Exception(f"Prompt template creation failed: {str(e)}")
         
         initialization_complete = True
-        logger.info("All components initialized successfully with Gemini!")
+        logger.info("All components initialized successfully with Groq/OpenAI Compatible!")
         
     except Exception as e:
         logger.error(f"FATAL: Error during application startup: {e}")
@@ -279,11 +283,19 @@ async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
 
         # Generate response using async invoke
         try:
-            full_response = await document_chain.ainvoke({
-                "input": request.message,
-                "context": retrieved_docs,
-                "conversation_history": conversation_context
-            })
+            # Format context from retrieved documents
+            context_text = "\n\n".join([doc.page_content for doc in retrieved_docs]) if retrieved_docs else ""
+            
+            # Create the formatted prompt
+            formatted_prompt = document_chain.format_messages(
+                input=request.message,
+                context=context_text,
+                conversation_history=conversation_context
+            )
+            
+            # Get response from LLM
+            response_obj = await llm.ainvoke(formatted_prompt)
+            full_response = response_obj.content
             
             if not full_response or not full_response.strip():
                 full_response = "I understand you're reaching out for support. Could you tell me more about what you're experiencing right now? I'm here to help you with evidence-based therapeutic techniques."
@@ -354,7 +366,7 @@ async def health_check():
             "document_chain": document_chain is not None,
             "documents_loaded": len(docs) if docs else 0
         },
-        "ai_provider": "Google Gemini 2.0 Flash",
+        "ai_provider": "Groq/OpenAI Compatible (openai/gpt-oss-120b)",
         "timestamp": time.time(),
         "active_conversations": len(conversation_history)
     }
@@ -368,7 +380,7 @@ async def root():
     """
     Root endpoint
     """
-    return {"message": "MindScribe Therapeutic AI is running with Gemini 2.0 Flash", "version": "2.0.0"}
+    return {"message": "MindScribe Therapeutic AI is running with Groq/OpenAI Compatible", "version": "2.0.0"}
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
