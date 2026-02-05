@@ -32,4 +32,4 @@ EXPOSE 8000
 
 # Run the application using Gunicorn with Uvicorn workers
 # We use the PORT environment variable which Render sets automatically
-CMD sh -c "gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:${PORT:-10000} --timeout 120"
+CMD sh -c "gunicorn -w 1 -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:${PORT:-10000} --timeout 120"
