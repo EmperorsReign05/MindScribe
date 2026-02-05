@@ -96,7 +96,7 @@ async def startup_event():
                 model="openai/gpt-oss-120b",
                 temperature=0.7,
                 api_key=google_api_key,
-                base_url="https://api.groq.com/openai/v1/responses"
+                base_url="https://api.groq.com/openai/v1"
             )
             # Test the LLM connection
             test_response = await llm.ainvoke("Hello")
