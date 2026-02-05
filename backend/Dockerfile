@@ -4,6 +4,7 @@ FROM python:3.10-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV IS_DOCKER=true
 
 # Set the working directory in the container
 WORKDIR /app
@@ -18,7 +19,10 @@ RUN apt-get update && apt-get install -y \
 # Copy the requirements file and download script
 COPY requirements.txt download_models.py /app/
 
-# Install python dependencies
+# Install CPU-only PyTorch first (Critical for Render Free Tier)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Install python dependencies from requirements
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Pre-download the ML models

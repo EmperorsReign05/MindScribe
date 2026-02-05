@@ -75,6 +75,10 @@ async def startup_event():
     
     try:
         logger.info("Starting component initialization...")
+        if os.getenv("IS_DOCKER"):
+            logger.info("🐳 RUNNING INSIDE DOCKER CONTAINER 🐳")
+        else:
+            logger.info("⚠️ RUNNING IN STANDARD PYTHON ENVIRONMENT (NOT DOCKER) ⚠️")
         initialization_complete = False
         initialization_error = None
         
