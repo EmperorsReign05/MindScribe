@@ -15,17 +15,21 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file into the container at /app
-COPY requirements.txt /app/
+# Copy the requirements file and download script
+COPY requirements.txt download_models.py /app/
 
-# Install any needed packages specified in requirements.txt
+# Install python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Pre-download the ML models
+RUN python download_models.py
 
 # Copy the rest of the application code
 COPY . /app/
 
-# Make port 8000 available to the world outside this container
+# Make port available (documentation only)
 EXPOSE 8000
 
 # Run the application using Gunicorn with Uvicorn workers
-CMD ["gunicorn", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "main:app", "--bind", "0.0.0.0:8000", "--timeout", "120"]
+# We use the PORT environment variable which Render sets automatically
+CMD sh -c "gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:${PORT:-10000} --timeout 120"
