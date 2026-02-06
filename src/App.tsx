@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import { ChatMessage } from "./components/ChatMessage.tsx";
+import { ChatMessage, TypingIndicator } from "./components/ChatMessage.tsx";
 import { ChatInput } from "./components/ChatInput.tsx";
-import { AuthModal } from "./components/AuthModal.tsx";
+// import { AuthModal } from "./components/AuthModal.tsx"; // Auth disabled
+import { LandingPage } from "./components/LandingPage.tsx";
+import { ThemeToggle } from "./components/ThemeToggle.tsx";
 import { Button } from "./components/ui/button.tsx";
 import { ScrollArea } from "./components/ui/scroll-area.tsx";
-import { Heart, LogOut, Save, FileText, Menu, X, Clock, Trash2 } from "lucide-react";
+import { LogOut, Save, FileText, Menu, X, Clock, Trash2, Leaf, Home } from "lucide-react";
 import { supabase } from './utils/supabase/client.tsx';
 
 interface Message {
@@ -27,7 +29,7 @@ interface Conversation {
   id: string;
   title: string;
   updated_at: string;
-  history: Message[]; 
+  history: Message[];
 }
 
 export default function App() {
@@ -42,6 +44,7 @@ export default function App() {
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [showLandingPage, setShowLandingPage] = useState(true);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Function to format timestamp
@@ -49,95 +52,95 @@ export default function App() {
 
   // Function to generate conversation title from first message
   const generateConversationTitle = (messages: Message[]) => {
-  const firstUserMessage = messages.find(msg => msg.isUser);
-  if (!firstUserMessage) return "New Conversation";
-  
-  let text = firstUserMessage.text.trim();
-  
-  // Remove common greetings 
-  text = text.replace(/^(hi|hello|hey|good morning|good afternoon|good evening)[,.\s]*/i, '');
- 
-  if (text.length < 10 || /^(how are you|what's up|wassup|yo)[\s.!?]*$/i.test(text)) {
-    
-    const secondUserMessage = messages.find((msg, index) => 
-      msg.isUser && index > 0 && msg.text.trim().length > 15
-    );
-    
-    if (secondUserMessage) {
-      text = secondUserMessage.text.trim();
-    } else {
-      return "General Chat";
-    }
-  }
-  
-  
-  const title = text.length > 35 ? text.substring(0, 35) + "..." : text;
-  return title.charAt(0).toUpperCase() + title.slice(1);
-};
-  const generateConversationTitleWithLLM = async (messages: Message[]): Promise<string> => {
- 
-  if (messages.length < 4) {
-    return generateConversationTitle(messages); // Fallback to existing method
-  }
+    const firstUserMessage = messages.find(msg => msg.isUser);
+    if (!firstUserMessage) return "New Conversation";
 
-  try {
-    // Get the first few messages for context
-    const contextMessages = messages.slice(0, 6); // First 3 exchanges
-    const conversation = contextMessages
-      .map(msg => `${msg.isUser ? 'User' : 'AI'}: ${msg.text}`)
-      .join('\n');
+    let text = firstUserMessage.text.trim();
 
-    const response = await fetch(`https://mindscribe-8dar.onrender.com/chat`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'text/plain'
-      },
-      body: JSON.stringify({ 
-        message: `Based on this conversation, generate a short, descriptive title (3-6 words max) that captures the main topic or concern. Don't use quotes or say "Title:". Just respond with the title only.\n\nConversation:\n${conversation}`,
-        user_id: user ? user.id : null
-      }),
-      signal: AbortSignal.timeout(20000)
-    });
+    // Remove common greetings 
+    text = text.replace(/^(hi|hello|hey|good morning|good afternoon|good evening)[,.\s]*/i, '');
 
-    if (!response.ok) {
-      throw new Error('Failed to generate title');
-    }
+    if (text.length < 10 || /^(how are you|what's up|wassup|yo)[\s.!?]*$/i.test(text)) {
 
-    const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
-    let title = '';
-    
-    if (reader) {
-      let done = false;
-      while (!done) {
-        const { value, done: readerDone } = await reader.read();
-        done = readerDone;
-        if (value) {
-          title += decoder.decode(value, { stream: true });
-        }
+      const secondUserMessage = messages.find((msg, index) =>
+        msg.isUser && index > 0 && msg.text.trim().length > 15
+      );
+
+      if (secondUserMessage) {
+        text = secondUserMessage.text.trim();
+      } else {
+        return "General Chat";
       }
     }
 
-   
-    const cleanTitle = title
-      .replace(/---SOURCES---[\s\S]*$/g, '') 
-      .replace(/^(Title:|Chat:|Conversation:)\s*/i, '') 
-      .replace(/["\n\r]/g, '') 
-      .trim();
 
-    
-    if (cleanTitle && cleanTitle.length > 3 && cleanTitle.length < 60) {
-      return cleanTitle;
-    } else {
-      throw new Error('Generated title not suitable');
+    const title = text.length > 35 ? text.substring(0, 35) + "..." : text;
+    return title.charAt(0).toUpperCase() + title.slice(1);
+  };
+  const generateConversationTitleWithLLM = async (messages: Message[]): Promise<string> => {
+
+    if (messages.length < 4) {
+      return generateConversationTitle(messages); // Fallback to existing method
     }
 
-  } catch (error) {
-    console.error('Error generating LLM title:', error);
-    return generateConversationTitle(messages);
-  }
-};
+    try {
+      // Get the first few messages for context
+      const contextMessages = messages.slice(0, 6); // First 3 exchanges
+      const conversation = contextMessages
+        .map(msg => `${msg.isUser ? 'User' : 'AI'}: ${msg.text}`)
+        .join('\n');
+
+      const response = await fetch(`https://mindscribe-8dar.onrender.com/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/plain'
+        },
+        body: JSON.stringify({
+          message: `Based on this conversation, generate a short, descriptive title (3-6 words max) that captures the main topic or concern. Don't use quotes or say "Title:". Just respond with the title only.\n\nConversation:\n${conversation}`,
+          user_id: user ? user.id : null
+        }),
+        signal: AbortSignal.timeout(20000)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate title');
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let title = '';
+
+      if (reader) {
+        let done = false;
+        while (!done) {
+          const { value, done: readerDone } = await reader.read();
+          done = readerDone;
+          if (value) {
+            title += decoder.decode(value, { stream: true });
+          }
+        }
+      }
+
+
+      const cleanTitle = title
+        .replace(/---SOURCES---[\s\S]*$/g, '')
+        .replace(/^(Title:|Chat:|Conversation:)\s*/i, '')
+        .replace(/["\n\r]/g, '')
+        .trim();
+
+
+      if (cleanTitle && cleanTitle.length > 3 && cleanTitle.length < 60) {
+        return cleanTitle;
+      } else {
+        throw new Error('Generated title not suitable');
+      }
+
+    } catch (error) {
+      console.error('Error generating LLM title:', error);
+      return generateConversationTitle(messages);
+    }
+  };
 
 
   // Scroll to bottom of chat
@@ -154,11 +157,11 @@ export default function App() {
   useEffect(() => {
     const initializeApp = async () => {
       setIsInitializing(true);
-      
+
       // Check for stored session data
       const storedUser = localStorage.getItem('mindscribe_user');
       const storedToken = localStorage.getItem('mindscribe_token');
-      
+
       if (storedUser && storedToken) {
         try {
           const userData = JSON.parse(storedUser);
@@ -181,10 +184,10 @@ export default function App() {
             const userData = session.user as User;
             setAccessToken(session.access_token);
             setUser(userData);
-            
+
             localStorage.setItem('mindscribe_user', JSON.stringify(userData));
             localStorage.setItem('mindscribe_token', session.access_token);
-            
+
             await loadConversations(session.access_token);
           } else {
             setDefaultWelcomeMessage();
@@ -194,7 +197,7 @@ export default function App() {
           setDefaultWelcomeMessage();
         }
       }
-      
+
       setIsInitializing(false);
     };
 
@@ -202,7 +205,7 @@ export default function App() {
       setMessages([
         {
           id: "welcome",
-          text: "Hello! I'm your AI companion here to listen and support you. To save your conversations and access them later, please sign in or create an account. The first response may take some time.",
+          text: "Hello! I'm your AI companion here to listen and support you. The first response may take some time.",
           isUser: false,
           timestamp: formatTimestamp()
         }
@@ -213,18 +216,18 @@ export default function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state changed:', event);
-      
+
       if (event === 'SIGNED_IN' && session) {
         const userData = session.user as User;
         setAccessToken(session.access_token);
         setUser(userData);
-        
+
         localStorage.setItem('mindscribe_user', JSON.stringify(userData));
         localStorage.setItem('mindscribe_token', session.access_token);
-        
+
         setTimeout(() => loadConversations(session.access_token), 100);
       } else if (event === 'SIGNED_OUT') {
-       
+
         setUser(null);
         setAccessToken(null);
         setCurrentConversationId(null);
@@ -247,19 +250,19 @@ export default function App() {
 
   const loadConversations = async (_token: string) => {
     if (isLoadingConversations || !user) return; // Prevent multiple calls and ensure user exists
-    
+
     setIsLoadingConversations(true);
     try {
       console.log('Loading conversations for user:', user.id);
-      
-     
+
+
       const queryPromise = supabase
         .from('conversation')
         .select('*')
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false });
-        
-      const timeoutPromise = new Promise((_, reject) => 
+
+      const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Load conversations timeout')), 8000)
       );
 
@@ -273,8 +276,8 @@ export default function App() {
 
       console.log('Loaded conversations:', conversationList);
       setConversations(conversationList || []);
-      
-     
+
+
       if (messages.length === 0 && !currentConversationId) {
         if (conversationList && conversationList.length > 0) {
           const latestConversation = conversationList[0];
@@ -310,10 +313,10 @@ export default function App() {
 
   const loadConversation = async (conversationId: string) => {
     if (!accessToken || !user) return;
-    
+
     try {
       console.log('Loading conversation:', conversationId);
-      
+
       const { data: conversation, error } = await supabase
         .from('conversation')
         .select('*')
@@ -330,7 +333,7 @@ export default function App() {
         console.log('Loaded conversation data:', conversation);
         setMessages(conversation.history || []);
         setCurrentConversationId(conversationId);
-        setShowSidebar(false); 
+        setShowSidebar(false);
       }
     } catch (error: any) {
       console.error('Error loading conversation:', error);
@@ -339,28 +342,28 @@ export default function App() {
 
   const deleteConversation = async (conversationId: string) => {
     if (!accessToken || !user) return;
-    
-    
+
+
     setConversations(prev => prev.filter(conv => conv.id !== conversationId));
-    
-   
+
+
     if (currentConversationId === conversationId) {
       startNewConversation();
     }
 
     try {
       console.log('Deleting conversation:', conversationId);
-      
+
       const deletePromise = supabase
         .from('conversation')
         .delete()
         .eq('id', conversationId)
         .eq('user_id', user.id);
-        
-      const timeoutPromise = new Promise((_, reject) => 
+
+      const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Delete timeout')), 5000)
       );
-      
+
       const result = await Promise.race([deletePromise, timeoutPromise]) as { error: any };
       const { error } = result;
 
@@ -373,7 +376,7 @@ export default function App() {
       }
     } catch (error: any) {
       console.error('Error deleting conversation:', error);
-      
+
       loadConversations(accessToken);
     }
   };
@@ -382,10 +385,10 @@ export default function App() {
     setAccessToken(token);
     setUser(userData);
     setShowAuthModal(false);
-    
+
     localStorage.setItem('mindscribe_user', JSON.stringify(userData));
     localStorage.setItem('mindscribe_token', token);
-    
+
     loadConversations(token);
   };
 
@@ -406,82 +409,82 @@ export default function App() {
       }
     ]);
 
-    
+
     try {
       const signOutPromise = supabase.auth.signOut();
-      const timeoutPromise = new Promise((_, reject) => 
+      const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Sign out timeout')), 3000)
       );
-      
+
       await Promise.race([signOutPromise, timeoutPromise]);
     } catch (error: any) {
       console.warn('Sign out completed with delay or error:', error.message);
-    
+
     }
   };
 
   const saveConversation = async (msgs: Message[]) => {
-  if (!accessToken || !user || msgs.length === 0 || isSaving) return;
+    if (!accessToken || !user || msgs.length === 0 || isSaving) return;
 
-  setIsSaving(true);
-  try {
-    
-    const conversationTitle = await generateConversationTitleWithLLM(msgs);
-    
-    console.log('Manual save:', { currentConversationId, msgCount: msgs.length, title: conversationTitle });
-    
-    if (currentConversationId) {
-      // Update existing conversation
-      const { error } = await supabase
-        .from('conversation')
-        .update({ 
-          history: msgs,
-          title: conversationTitle,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', currentConversationId)
-        .eq('user_id', user.id);
+    setIsSaving(true);
+    try {
 
-      if (error) {
-        console.error('Error updating conversation:', error);
-        throw error;
-      }
-      console.log('Conversation updated successfully with title:', conversationTitle);
-      
-      // Refresh the conversations list to show updated data
-      setTimeout(() => loadConversations(''), 500);
-    } else {
-      // Create new conversation
-      const { data, error } = await supabase
-        .from('conversation')
-        .insert({ 
-          user_id: user.id,
-          history: msgs,
-          title: conversationTitle,
-          updated_at: new Date().toISOString()
-        })
-        .select()
-        .single();
+      const conversationTitle = await generateConversationTitleWithLLM(msgs);
 
-      if (error) {
-        console.error('Error creating conversation:', error);
-        throw error;
-      }
-      
-      if (data) {
-        console.log('New conversation created with title:', conversationTitle);
-        setCurrentConversationId(data.id);
-        
+      console.log('Manual save:', { currentConversationId, msgCount: msgs.length, title: conversationTitle });
+
+      if (currentConversationId) {
+        // Update existing conversation
+        const { error } = await supabase
+          .from('conversation')
+          .update({
+            history: msgs,
+            title: conversationTitle,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', currentConversationId)
+          .eq('user_id', user.id);
+
+        if (error) {
+          console.error('Error updating conversation:', error);
+          throw error;
+        }
+        console.log('Conversation updated successfully with title:', conversationTitle);
+
+        // Refresh the conversations list to show updated data
         setTimeout(() => loadConversations(''), 500);
+      } else {
+        // Create new conversation
+        const { data, error } = await supabase
+          .from('conversation')
+          .insert({
+            user_id: user.id,
+            history: msgs,
+            title: conversationTitle,
+            updated_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Error creating conversation:', error);
+          throw error;
+        }
+
+        if (data) {
+          console.log('New conversation created with title:', conversationTitle);
+          setCurrentConversationId(data.id);
+
+          setTimeout(() => loadConversations(''), 500);
+        }
       }
+    } catch (error: any) {
+      console.error('Error saving conversation:', error);
+      alert('Failed to save conversation. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
-  } catch (error: any) {
-    console.error('Error saving conversation:', error);
-    alert('Failed to save conversation. Please try again.');
-  } finally {
-    setIsSaving(false);
-  }
-};
+  };
 
   const handleSendMessage = async (text: string) => {
     const newUserMessage: Message = {
@@ -498,14 +501,14 @@ export default function App() {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
-const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://mindscribe-8dar.onrender.com';
-const response = await fetch(`${backendUrl}/chat`,{
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://mindscribe-8dar.onrender.com';
+      const response = await fetch(`${backendUrl}/chat`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Accept': 'text/plain'
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           message: text,
           user_id: user ? user.id : null
         }),
@@ -521,9 +524,9 @@ const response = await fetch(`${backendUrl}/chat`,{
       if (!response.body) {
         throw new Error("Response body is null");
       }
-      
+
       setIsTyping(false);
-      
+
       const aiMessageId = (Date.now() + 1).toString();
       const aiMessage: Message = {
         id: aiMessageId,
@@ -570,9 +573,9 @@ const response = await fetch(`${backendUrl}/chat`,{
 
     } catch (error: any) {
       console.error("Chat error:", error);
-      
+
       let errorText = "Sorry, I'm having trouble connecting right now. Please try again later.";
-      
+
       if (error.name === 'AbortError') {
         errorText = "Request timed out. Please try again with a shorter message.";
       } else if (error.message.includes('Failed to fetch')) {
@@ -585,7 +588,7 @@ const response = await fetch(`${backendUrl}/chat`,{
         isUser: false,
         timestamp: formatTimestamp(),
       };
-      
+
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsTyping(false);
@@ -608,50 +611,54 @@ const response = await fetch(`${backendUrl}/chat`,{
   // Show loading state while initializing
   if (isInitializing) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50">
-        <div className="text-center">
-          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg mx-auto mb-4">
-            <Heart className="w-6 h-6 text-white" />
+      <div className="h-screen flex items-center justify-center bg-background gradient-mesh">
+        <div className="text-center animate-fade-in">
+          <div className="w-14 h-14 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-xl shadow-teal-500/30 mx-auto mb-4">
+            <Leaf className="w-7 h-7 text-white" />
           </div>
-          <h2 className="text-xl font-bold text-slate-800 mb-2">MindScribe</h2>
-          <p className="text-slate-600">Loading your wellness companion...</p>
+          <h2 className="text-xl font-bold text-foreground mb-2">MindScribe</h2>
+          <p className="text-muted-foreground">Loading your wellness companion...</p>
         </div>
       </div>
     );
   }
 
+  // Show landing page
+  if (showLandingPage) {
+    return <LandingPage onStartChat={() => setShowLandingPage(false)} />;
+  }
+
   return (
-    <div className="h-screen flex ">
+    <div className="h-screen flex bg-background gradient-mesh">
       {/* Sidebar */}
       {user && (
         <>
           {showSidebar && (
-            <div 
-              className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden"
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-20 lg:hidden"
               onClick={() => setShowSidebar(false)}
             />
           )}
-          
+
           {/* Sidebar */}
-          <div className={`fixed lg:relative inset-y-0 left-0 z-30 w-80 bg-white/90 backdrop-blur-lg border-r border-slate-200/60 transform transition-transform duration-300 ease-in-out ${showSidebar ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+          <div className={`fixed lg:relative inset-y-0 left-0 z-30 w-80 bg-card/95 backdrop-blur-xl border-r border-border transform transition-transform duration-300 ease-out ${showSidebar ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
             <div className="flex flex-col h-full">
               {/* Sidebar Header */}
-              <div className="flex items-center justify-between p-4 border-b border-slate-200/60">
-                <h2 className="text-lg font-semibold text-slate-800">Chat History</h2>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+              <div className="flex items-center justify-between p-4 border-b border-border">
+                <h2 className="text-lg font-semibold text-foreground">Chat History</h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setShowSidebar(false)}
                   className="lg:hidden"
                 >
                   <X className="w-4 h-4" />
                 </Button>
               </div>
-              
+
               <div className="p-4">
-                <Button 
+                <Button
                   onClick={startNewConversation}
-                  className="w-full bg-blue-500 hover:bg-blue-600 text-white"
+                  className="w-full bg-teal-500 hover:bg-teal-600 text-white"
                 >
                   <FileText className="w-4 h-4 mr-2" />
                   New Chat
@@ -674,11 +681,10 @@ const response = await fetch(`${backendUrl}/chat`,{
                     {conversations.map((conversation) => (
                       <div
                         key={conversation.id}
-                        className={`group relative p-3 rounded-lg cursor-pointer transition-colors ${
-                          currentConversationId === conversation.id
-                            ? 'bg-blue-50 border border-blue-200'
-                            : 'hover:bg-slate-50'
-                        }`}
+                        className={`group relative p-3 rounded-lg cursor-pointer transition-colors ${currentConversationId === conversation.id
+                          ? 'bg-blue-50 border border-blue-200'
+                          : 'hover:bg-slate-50'
+                          }`}
                         onClick={() => loadConversation(conversation.id)}
                       >
                         <div className="pr-8">
@@ -690,7 +696,7 @@ const response = await fetch(`${backendUrl}/chat`,{
                             {new Date(conversation.updated_at).toLocaleDateString()}
                           </div>
                         </div>
-                        
+
                         <Button
                           variant="ghost"
                           size="sm"
@@ -715,68 +721,82 @@ const response = await fetch(`${backendUrl}/chat`,{
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-h-0 h-screen">
         {/* Header */}
-        <header className="bg-white/80 backdrop-blur-lg border-b border-slate-200/60 px-4 sm:px-6 py-4 shadow-sm">
+        <header className="glass border-b border-border px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between max-w-6xl mx-auto">
             {/* Logo and Title */}
             <div className="flex items-center gap-3">
               {user && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setShowSidebar(true)}
-                  className="lg:hidden mr-2"
+                  className="lg:hidden mr-2 btn-icon"
                 >
-                  <Menu className="w-4 h-4" />
+                  <Menu className="w-5 h-5" />
                 </Button>
               )}
-              
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-                <Heart className="w-5 h-5 text-white" />
+
+              <div className="w-11 h-11 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-teal-500/25">
+                <Leaf className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-slate-800">MindScribe</h1>
-                <p className="text-slate-600 text-sm">
-                  {user ? `Welcome back, ${user.user_metadata?.name || 'Friend'}` : 'Your AI wellness companion'}
+                <h1 className="text-xl font-bold text-foreground">MindScribe</h1>
+                <p className="text-muted-foreground text-sm">
+                  Your AI wellness companion
                 </p>
               </div>
             </div>
-            
+
             {/* Action Buttons */}
             <div className="flex items-center gap-2">
+              {/* Home Button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowLandingPage(true)}
+                className="btn-icon"
+                title="Back to Home"
+              >
+                <Home className="w-5 h-5" />
+              </Button>
+
+              {/* Theme Toggle */}
+              <ThemeToggle />
+
+              {/* Auth buttons - disabled
               {user ? (
                 <>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={() => saveConversation(messages)} 
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => saveConversation(messages)}
                     disabled={isSaving || messages.length === 0}
-                    className="text-slate-600 hover:text-slate-800 hover:bg-slate-100"
+                    className="btn-ghost hidden sm:flex"
                   >
                     <Save className="w-4 h-4 mr-2" />
                     {isSaving ? 'Saving...' : 'Save Chat'}
                   </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={handleSignOut}
-                    className="text-slate-600 hover:text-slate-800 hover:bg-slate-100"
+                    className="btn-ghost"
                   >
-                    <LogOut className="w-4 h-4 mr-2" />
-                    Sign Out
+                    <LogOut className="w-4 h-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Sign Out</span>
                   </Button>
                 </>
               ) : (
-                <Button 
-                  variant="default" 
-                  size="sm" 
+                <Button
+                  variant="default"
+                  size="sm"
                   onClick={() => setShowAuthModal(true)}
-                  className="bg-blue-500 hover:bg-blue-600 text-white shadow-lg"
+                  className="btn-primary"
                 >
                   Sign In
                 </Button>
               )}
-              
-              
+              */}
             </div>
           </div>
         </header>
@@ -793,26 +813,13 @@ const response = await fetch(`${backendUrl}/chat`,{
                   timestamp={message.timestamp}
                 />
               ))}
-              
-              {isTyping && (
-                <div className="flex gap-3 mb-6">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0 mt-1 shadow-lg">
-                    <span className="text-white text-xs font-medium">AI</span>
-                  </div>
-                  <div className="bg-white rounded-2xl rounded-bl-sm px-4 py-3 shadow-lg border border-slate-200">
-                    <div className="flex gap-1">
-                      <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                      <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                    </div>
-                  </div>
-                </div>
-              )}
+
+              {isTyping && <TypingIndicator />}
             </div>
           </ScrollArea>
 
           {/* Chat Input */}
-          <div className="border-t border-slate-200/60 bg-white/80 backdrop-blur-lg px-4 sm:px-6 py-4">
+          <div className="border-t border-border glass px-4 sm:px-6 py-4">
             <div className="max-w-4xl mx-auto">
               <ChatInput onSendMessage={handleSendMessage} disabled={isTyping} />
             </div>
@@ -820,11 +827,13 @@ const response = await fetch(`${backendUrl}/chat`,{
         </div>
       </div>
 
+      {/* Auth Modal - disabled
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
         onAuthSuccess={handleAuthSuccess}
       />
+      */}
     </div>
   );
 }
