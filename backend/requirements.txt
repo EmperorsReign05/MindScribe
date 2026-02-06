@@ -1,9 +1,9 @@
 fastapi
 uvicorn
 pydantic
-langchain-community
 langchain-core
 langchain-openai
-sentence-transformers
+langchain-cohere
+langchain-community
 faiss-cpu
 gunicorn

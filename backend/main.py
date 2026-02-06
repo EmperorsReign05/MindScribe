@@ -10,10 +10,11 @@ import logging
 import re
 import time
 from langchain_openai import ChatOpenAI
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_cohere import CohereEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
 
+# Import knowledge base
 try:
     from .knowledge_base import documents as docs
 except ImportError:
@@ -23,7 +24,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 app = FastAPI()
 
-#CORS middleware
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -36,8 +37,7 @@ app.add_middleware(
         "https://localhost:3000",
         "https://localhost:5173",
         "https://synapse-mindscribe.netlify.app/",
-        "*"  # Frontend
-        
+        "*"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -47,7 +47,7 @@ app.add_middleware(
 # Global variables
 llm = None
 retriever = None
-document_chain = None
+prompt_template = None
 initialization_complete = False
 initialization_error = None
 
@@ -57,80 +57,77 @@ conversation_history = {}
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
-    
-    # Log the request
     logger.info(f"Request: {request.method} {request.url}")
-    
     response = await call_next(request)
-    
-    # Log the response time
     process_time = time.time() - start_time
     logger.info(f"Request completed in {process_time:.2f}s with status {response.status_code}")
-    
     return response
 
 @app.on_event("startup")
 async def startup_event():
-    global llm, retriever, document_chain, initialization_complete, initialization_error
+    global llm, retriever, prompt_template, initialization_complete, initialization_error
     
     try:
         logger.info("Starting component initialization...")
-        if os.getenv("IS_DOCKER"):
-            logger.info("🐳 RUNNING INSIDE DOCKER CONTAINER 🐳")
-        else:
-            logger.info("⚠️ RUNNING IN STANDARD PYTHON ENVIRONMENT (NOT DOCKER) ⚠️")
         initialization_complete = False
         initialization_error = None
         
+        # Get API keys
+        groq_api_key = os.getenv("GOOGLE_API_KEY")  # Using same env var as before
+        cohere_api_key = os.getenv("COHERE_API_KEY")
         
-        google_api_key = os.getenv("GOOGLE_API_KEY")
-        if not google_api_key:
+        if not groq_api_key:
             logger.error("GOOGLE_API_KEY environment variable is not set!")
             initialization_error = "GOOGLE_API_KEY environment variable is required"
             return
+            
+        if not cohere_api_key:
+            logger.error("COHERE_API_KEY environment variable is not set!")
+            initialization_error = "COHERE_API_KEY environment variable is required for embeddings"
+            return
         
-        
-        # Initialize LLM with Groq via OpenAI client compatibility
+        # Initialize LLM with Groq
         try:
             llm = ChatOpenAI(
                 model="openai/gpt-oss-120b",
                 temperature=0.7,
-                api_key=google_api_key,
+                api_key=groq_api_key,
                 base_url="https://api.groq.com/openai/v1"
             )
-            # Test the LLM connection
             test_response = await llm.ainvoke("Hello")
-            logger.info(f"Groq LLM initialized and tested successfully: {test_response.content[:50]}...")
+            logger.info(f"Groq LLM initialized successfully: {test_response.content[:50]}...")
         except Exception as e:
             logger.error(f"Failed to initialize Groq LLM: {e}")
             initialization_error = f"Groq LLM initialization failed: {str(e)}"
             return
         
-        # Initialize embeddings with Gemini
-        # Initialize embeddings with HuggingFace (Local)
+        # Initialize Cohere Embeddings (cloud-based, lightweight!)
         try:
-            embeddings = HuggingFaceEmbeddings(
-                model_name="all-MiniLM-L6-v2"
+            embeddings = CohereEmbeddings(
+                cohere_api_key=cohere_api_key,
+                model="embed-english-v3.0"
             )
             # Test embeddings
-            test_embedding = await embeddings.aembed_query("test")
-            logger.info(f"HuggingFace Embeddings initialized successfully (dimension: {len(test_embedding)})")
+            test_embedding = embeddings.embed_query("test")
+            logger.info(f"Cohere Embeddings initialized successfully (dimension: {len(test_embedding)})")
         except Exception as e:
-            logger.error(f"Failed to initialize HuggingFace embeddings: {e}")
-            initialization_error = f"HuggingFace embeddings initialization failed: {str(e)}"
+            logger.error(f"Failed to initialize Cohere embeddings: {e}")
+            initialization_error = f"Cohere embeddings initialization failed: {str(e)}"
             return
         
-        # Create vector store
+        # Create vector store from knowledge base
         try:
             logger.info(f"Creating vector store from {len(docs)} documents...")
             if not docs or len(docs) == 0:
-                raise Exception("No documents found in knowledge base")
+                logger.warning("No documents found in knowledge base")
+                initialization_error = "No documents found in knowledge base"
+                return
             
             vector = await asyncio.get_event_loop().run_in_executor(
                 None, 
                 lambda: FAISS.from_documents(docs, embeddings)
             )
-            retriever = vector.as_retriever(search_kwargs={"k": 5}) 
+            retriever = vector.as_retriever(search_kwargs={"k": 5})
             
             # Test retriever
             test_docs = await asyncio.get_event_loop().run_in_executor(
@@ -143,10 +140,9 @@ async def startup_event():
             initialization_error = f"Vector store creation failed: {str(e)}"
             return
         
-        
-        # Create prompt template for structured responses
+        # Create prompt template
         try:
-            prompt = ChatPromptTemplate.from_template("""
+            prompt_template = ChatPromptTemplate.from_template("""
 You are MindScribe, a professional AI therapy assistant with expertise in evidence-based therapeutic techniques. Your role is to provide structured, practical therapeutic guidance while being empathetic and supportive.
 
 CONVERSATION HISTORY (for context):
@@ -175,39 +171,26 @@ RESPONSE FORMAT:
 
 Your response:
 """)
-            
-            # Store prompt globally instead of creating a chain
-            document_chain = prompt
-            
-            # Test the LLM with a simple prompt
-            test_prompt = prompt.format_messages(
-                input="Hello",
-                context="",
-                conversation_history=""
-            )
-            test_result = await llm.ainvoke(test_prompt)
-            logger.info(f"LLM and prompt template initialized successfully: {test_result.content[:50]}...")
+            logger.info("Prompt template created successfully")
         except Exception as e:
             logger.error(f"Failed to create prompt template: {e}")
             initialization_error = f"Prompt template creation failed: {str(e)}"
             return
         
         initialization_complete = True
-        logger.info("All components initialized successfully with Groq/OpenAI Compatible!")
+        logger.info("All components initialized successfully with Groq LLM + Cohere Embeddings!")
         
     except Exception as e:
         logger.error(f"FATAL: Error during application startup: {e}")
         initialization_complete = False
         initialization_error = str(e)
 
-# Function to manage conversation history
+# Conversation history functions
 def get_conversation_context(user_id: str, current_message: str) -> str:
-    """Get the last few messages for context"""
     if not user_id or user_id not in conversation_history:
         return ""
     
     history = conversation_history[user_id]
-    # Get last 6 messages (3 exchanges) for context
     recent_history = history[-6:] if len(history) > 6 else history
     
     context_string = ""
@@ -218,7 +201,6 @@ def get_conversation_context(user_id: str, current_message: str) -> str:
     return context_string
 
 def add_to_conversation_history(user_id: str, message: str, is_user: bool):
-    """Add message to conversation history"""
     if not user_id:
         return
     
@@ -231,24 +213,21 @@ def add_to_conversation_history(user_id: str, message: str, is_user: bool):
         "timestamp": time.time()
     })
     
-    # Keep only last 20 messages to prevent memory issues
     if len(conversation_history[user_id]) > 20:
         conversation_history[user_id] = conversation_history[user_id][-20:]
 
-#API Endpoint
+# API Endpoint
 class ChatRequest(BaseModel):
     message: str
     user_id: Optional[str] = None
 
 async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
     try:
-        # Log request details
         if request.user_id:
             logger.info(f"Processing message from user: {request.user_id}")
         else:
             logger.info("Processing message from anonymous user")
 
-        # Validate input
         if not request.message or not request.message.strip():
             yield "I'd love to hear what's on your mind. Please share something with me so I can help you better."
             return
@@ -258,7 +237,6 @@ async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
             yield "Hello! I'm here to provide you with evidence-based therapeutic support. How are you feeling today, and what would you like to work on together?"
             return
 
-        # Check if initialization is complete
         if not initialization_complete:
             if initialization_error:
                 yield f"I'm sorry, there was an error starting up the system: {initialization_error}. Please contact support."
@@ -266,21 +244,17 @@ async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
                 yield "I'm sorry, the system is still starting up. Please try again in a moment."
             return
 
-        # Validate that all components are available
-        if not all([llm, retriever, document_chain]):
+        if not all([llm, retriever, prompt_template]):
             yield "I'm sorry, some components are not properly initialized. Please try again later."
             return
 
         # Get conversation context
         conversation_context = get_conversation_context(request.user_id or "anonymous", request.message)
-        
-        # Add current user message to history
         add_to_conversation_history(request.user_id or "anonymous", request.message, True)
 
-        # Process the message
         logger.info(f"Processing message: {request.message[:100]}...")
         
-        # Retrieve documents
+        # RAG: Retrieve relevant documents
         try:
             retrieved_docs = await asyncio.get_event_loop().run_in_executor(
                 None, 
@@ -289,21 +263,18 @@ async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
             logger.info(f"Retrieved {len(retrieved_docs)} documents")
         except Exception as e:
             logger.error(f"Error retrieving documents: {e}")
-            retrieved_docs = []  # Continue without documents
+            retrieved_docs = []
 
-        # Generate response using async invoke
+        # Generate response with RAG context
         try:
-            # Format context from retrieved documents
             context_text = "\n\n".join([doc.page_content for doc in retrieved_docs]) if retrieved_docs else ""
             
-            # Create the formatted prompt
-            formatted_prompt = document_chain.format_messages(
+            formatted_prompt = prompt_template.format_messages(
                 input=request.message,
                 context=context_text,
                 conversation_history=conversation_context
             )
             
-            # Get response from LLM
             response_obj = await llm.ainvoke(formatted_prompt)
             full_response = response_obj.content
             
@@ -311,26 +282,13 @@ async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
                 full_response = "I understand you're reaching out for support. Could you tell me more about what you're experiencing right now? I'm here to help you with evidence-based therapeutic techniques."
                 
             logger.info(f"Generated response: {full_response[:100]}...")
-            
-            # Add AI response to history
             add_to_conversation_history(request.user_id or "anonymous", full_response, False)
             
         except Exception as e:
             logger.error(f"Error generating response: {e}")
             full_response = "I'm having trouble processing your message right now, but I'm here to help. Could you try rephrasing what you'd like to work on therapeutically?"
 
-        # Stream the text response
         yield full_response
-
-        # Stream the sources if available (commented out)
-        '''if retrieved_docs:
-            try:
-                separator = "\n\n---THERAPEUTIC SOURCES---\n\n"
-                sources = [doc.metadata for doc in retrieved_docs if hasattr(doc, 'metadata')]
-                if sources:
-                    yield separator + json.dumps(sources, ensure_ascii=False, indent=2)
-            except Exception as e:
-                logger.error(f"Error processing sources: {e}")'''
 
     except Exception as e:
         logger.error(f"Critical error in stream_generator: {e}")
@@ -338,9 +296,6 @@ async def stream_generator(request: ChatRequest) -> AsyncGenerator[str, None]:
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
-    """
-    Chat endpoint that streams responses from the AI
-    """
     try:
         return StreamingResponse(
             stream_generator(request), 
@@ -359,9 +314,6 @@ async def chat_endpoint(request: ChatRequest):
 
 @app.get("/health")
 async def health_check():
-    """
-    Health check endpoint
-    """
     status = "healthy" if initialization_complete else "initializing"
     if initialization_error:
         status = "error"
@@ -373,10 +325,12 @@ async def health_check():
         "components": {
             "llm": llm is not None,
             "retriever": retriever is not None,
-            "document_chain": document_chain is not None,
+            "prompt_template": prompt_template is not None,
             "documents_loaded": len(docs) if docs else 0
         },
         "ai_provider": "Groq/OpenAI Compatible (openai/gpt-oss-120b)",
+        "embeddings_provider": "Cohere (embed-english-v3.0)",
+        "mode": "RAG with Cloud Embeddings",
         "timestamp": time.time(),
         "active_conversations": len(conversation_history)
     }
@@ -387,16 +341,10 @@ def ping():
 
 @app.get("/")
 async def root():
-    """
-    Root endpoint
-    """
-    return {"message": "MindScribe Therapeutic AI is running with Groq/OpenAI Compatible", "version": "2.0.0"}
+    return {"message": "MindScribe Therapeutic AI with RAG is running", "version": "2.2.0"}
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """
-    Global exception handler
-    """
     logger.error(f"Global exception handler caught: {exc}")
     return HTTPException(status_code=500, detail="Internal server error")
 
